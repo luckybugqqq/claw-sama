@@ -119,6 +119,10 @@ claw-sama/
 - **AI**: LLM via OpenClaw runtime (supports multiple providers)
 - **TTS**: Edge TTS / Qwen TTS
 
+## Acknowledgments
+
+- Inspired by [AIRI](https://github.com/moeru-ai/airi) — an AI companion project by moeru-ai
+
 ## License
 
 MIT
