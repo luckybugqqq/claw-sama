@@ -11,7 +11,7 @@
   "files": [
     "index.ts",
     "app/src-tauri/target/release/claw-sama.exe",
-    "app/src-tauri/target/release/bundle/dmg/"
+    "app/src-tauri/target/release/bundle/macos/"
   ],
   "peerDependencies": {
     "openclaw": "*",

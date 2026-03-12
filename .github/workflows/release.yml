@@ -71,6 +71,14 @@ jobs:
             app/src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg
             app/src-tauri/target/${{ matrix.target }}/release/bundle/macos/*.zip
 
+      # Upload .app directory separately for npm packaging
+      - name: Upload .app for npm (macOS)
+        if: startsWith(matrix.platform, 'macos')
+        uses: actions/upload-artifact@v4
+        with:
+          name: claw-sama-app-${{ matrix.target }}
+          path: app/src-tauri/target/${{ matrix.target }}/release/bundle/macos/*.app
+
   release:
     needs: build
     runs-on: ubuntu-latest
@@ -113,12 +121,27 @@ jobs:
           cp artifacts/claw-sama-windows/app/src-tauri/target/x86_64-pc-windows-msvc/release/claw-sama.exe \
              app/src-tauri/target/release/claw-sama.exe
 
-          # macOS dmg files
-          mkdir -p app/src-tauri/target/release/bundle/dmg
-          find artifacts -name '*.dmg' -exec cp {} app/src-tauri/target/release/bundle/dmg/ \;
+          # macOS .app bundles (architecture-specific names)
+          mkdir -p app/src-tauri/target/release/bundle/macos
+
+          # aarch64 (Apple Silicon)
+          if [ -d "artifacts/claw-sama-app-aarch64-apple-darwin" ]; then
+            app_dir=$(find artifacts/claw-sama-app-aarch64-apple-darwin -name '*.app' -type d | head -1)
+            if [ -n "$app_dir" ]; then
+              cp -r "$app_dir" app/src-tauri/target/release/bundle/macos/claw-sama-aarch64.app
+            fi
+          fi
+
+          # x86_64 (Intel)
+          if [ -d "artifacts/claw-sama-app-x86_64-apple-darwin" ]; then
+            app_dir=$(find artifacts/claw-sama-app-x86_64-apple-darwin -name '*.app' -type d | head -1)
+            if [ -n "$app_dir" ]; then
+              cp -r "$app_dir" app/src-tauri/target/release/bundle/macos/claw-sama-x86_64.app
+            fi
+          fi
 
           echo "=== npm package contents ==="
-          find app/src-tauri/target/release -type f
+          find app/src-tauri/target/release -type f | head -20
 
       - name: Publish to npm
         run: npm publish --access public

@@ -1237,10 +1237,12 @@ $bmp.Dispose()
     function resolveBuiltBinary(): string | null {
       const releaseDir = path.join(appDir, "src-tauri", "target", "release");
       const bundleDir = path.join(releaseDir, "bundle");
+      const macArch = process.arch === "arm64" ? "aarch64" : "x86_64";
       const candidates: string[] =
         process.platform === "win32" ? [
           path.join(releaseDir, "claw-sama.exe"),
         ] : process.platform === "darwin" ? [
+          path.join(bundleDir, "macos", `claw-sama-${macArch}.app`),
           path.join(bundleDir, "macos", "claw-sama.app"),
           path.join(releaseDir, "claw-sama"),
         ] : [
