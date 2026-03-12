@@ -1,6 +1,6 @@
 {
   "name": "@luckybugqqq/claw-sama",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "VRM avatar desktop pet plugin for OpenClaw",
   "license": "MIT",
   "type": "module",
@@ -13,7 +13,8 @@
     "index.ts",
     "openclaw.plugin.json",
     "app/src-tauri/target/release/claw-sama.exe",
-    "app/src-tauri/target/release/bundle/macos/"
+    "app/src-tauri/target/release/claw-sama-aarch64-apple-darwin",
+    "app/src-tauri/target/release/claw-sama-x86_64-apple-darwin"
   ],
   "dependencies": {
     "node-edge-tts": "^1.2.10"

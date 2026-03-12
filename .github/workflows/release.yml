@@ -71,13 +71,13 @@ jobs:
             app/src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg
             app/src-tauri/target/${{ matrix.target }}/release/bundle/macos/*.zip
 
-      # Upload .app directory separately for npm packaging
-      - name: Upload .app for npm (macOS)
+      # Upload raw binary for npm packaging (avoids .app signing/permission issues)
+      - name: Upload raw binary for npm (macOS)
         if: startsWith(matrix.platform, 'macos')
         uses: actions/upload-artifact@v4
         with:
-          name: claw-sama-app-${{ matrix.target }}
-          path: app/src-tauri/target/${{ matrix.target }}/release/bundle/macos/*.app
+          name: claw-sama-bin-${{ matrix.target }}
+          path: app/src-tauri/target/${{ matrix.target }}/release/claw-sama
 
   release:
     needs: build
@@ -119,9 +119,9 @@ jobs:
 
       - name: Place binaries for npm package
         run: |
-          mkdir -p app/src-tauri/target/release/bundle/macos
+          mkdir -p app/src-tauri/target/release
 
-          # Windows exe — find it wherever it landed
+          # Windows exe
           exe=$(find artifacts -name 'claw-sama.exe' -type f | head -1)
           if [ -n "$exe" ]; then
             cp "$exe" app/src-tauri/target/release/claw-sama.exe
@@ -130,14 +130,15 @@ jobs:
             echo "WARNING: claw-sama.exe not found"
           fi
 
-          # macOS .app bundles
+          # macOS raw binaries (no .app bundle — avoids signing & permission issues)
           for arch in aarch64 x86_64; do
-            app_dir=$(find artifacts -path "*${arch}*" -name '*.app' -type d | head -1)
-            if [ -n "$app_dir" ]; then
-              cp -r "$app_dir" "app/src-tauri/target/release/bundle/macos/claw-sama-${arch}.app"
-              echo "Found ${arch} .app: $app_dir"
+            bin=$(find artifacts -path "*${arch}*" -name 'claw-sama' -type f | head -1)
+            if [ -n "$bin" ]; then
+              cp "$bin" "app/src-tauri/target/release/claw-sama-${arch}-apple-darwin"
+              chmod +x "app/src-tauri/target/release/claw-sama-${arch}-apple-darwin"
+              echo "Found ${arch} binary: $bin"
             else
-              echo "WARNING: ${arch} .app not found"
+              echo "WARNING: ${arch} binary not found"
             fi
           done
 

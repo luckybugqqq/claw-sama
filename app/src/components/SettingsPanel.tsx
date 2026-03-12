@@ -101,6 +101,35 @@ export function SettingsPanel({
   const [previewingId, setPreviewingId] = useState<string | null>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
 
+  // Drag state
+  const [panelPos, setPanelPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
+  const dragRef = useRef<{ dragging: boolean; startX: number; startY: number; origX: number; origY: number }>({
+    dragging: false, startX: 0, startY: 0, origX: 0, origY: 0,
+  })
+
+  const onDragStart = useCallback((e: React.MouseEvent) => {
+    dragRef.current = { dragging: true, startX: e.clientX, startY: e.clientY, origX: panelPos.x, origY: panelPos.y }
+    const onMove = (ev: MouseEvent) => {
+      if (!dragRef.current.dragging) return
+      setPanelPos({
+        x: dragRef.current.origX + ev.clientX - dragRef.current.startX,
+        y: dragRef.current.origY + ev.clientY - dragRef.current.startY,
+      })
+    }
+    const onUp = () => {
+      dragRef.current.dragging = false
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }, [panelPos])
+
+  // Reset position when panel opens
+  useEffect(() => {
+    if (visible) setPanelPos({ x: 0, y: 0 })
+  }, [visible])
+
   // Force disable pass-through when panel is visible
   useEffect(() => {
     if (!visible) return
@@ -256,9 +285,9 @@ export function SettingsPanel({
 
   return (
     <div style={overlayStyle} data-no-passthrough onClick={onClose}>
-      <div style={panelStyle} data-no-passthrough onClick={(e) => e.stopPropagation()}>
-        <div style={headerStyle}>
-          <span style={{ fontSize: 16, fontWeight: 600 }}>设置</span>
+      <div style={{ ...panelStyle, transform: `translate(${panelPos.x}px, ${panelPos.y}px)` }} data-no-passthrough onClick={(e) => e.stopPropagation()}>
+        <div style={headerStyle} onMouseDown={onDragStart}>
+          <span style={{ fontSize: 16, fontWeight: 600, cursor: 'grab' }}>设置</span>
           <button onClick={onClose} style={closeBtnStyle}>
             <X size={16} />
           </button>
@@ -625,6 +654,8 @@ const headerStyle: React.CSSProperties = {
   justifyContent: 'space-between',
   alignItems: 'center',
   marginBottom: 12,
+  cursor: 'grab',
+  userSelect: 'none',
 }
 
 const closeBtnStyle: React.CSSProperties = {

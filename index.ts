@@ -1241,34 +1241,31 @@ $bmp.Dispose()
     // Resolve pre-built binary path (platform-specific)
     function resolveBuiltBinary(): string | null {
       const releaseDir = path.join(appDir, "src-tauri", "target", "release");
-      const bundleDir = path.join(releaseDir, "bundle");
       const macArch = process.arch === "arm64" ? "aarch64" : "x86_64";
       const candidates: string[] =
         process.platform === "win32" ? [
           path.join(releaseDir, "claw-sama.exe"),
         ] : process.platform === "darwin" ? [
-          path.join(bundleDir, "macos", `claw-sama-${macArch}.app`),
-          path.join(bundleDir, "macos", "claw-sama.app"),
+          path.join(releaseDir, `claw-sama-${macArch}-apple-darwin`),
           path.join(releaseDir, "claw-sama"),
         ] : [
           path.join(releaseDir, "claw-sama"),
         ];
       for (const p of candidates) {
-        if (existsSync(p)) return p;
+        if (existsSync(p)) {
+          // Ensure executable permission on unix (npm may strip it)
+          if (process.platform !== "win32") {
+            try { execFileSync("chmod", ["+x", p]); } catch {}
+          }
+          return p;
+        }
       }
       return null;
     }
 
-    let launchedAsAppBundle = false;
-
     function launchBinary(binPath: string) {
       api.logger.info(`Launching Claw Sama: ${binPath}`);
-      if (process.platform === "darwin" && binPath.endsWith(".app")) {
-        launchedAsAppBundle = true;
-        tauriProcess = spawn("open", ["-W", "-a", binPath], { stdio: "ignore" });
-      } else {
-        tauriProcess = spawn(binPath, [], { cwd: appDir, stdio: "ignore" });
-      }
+      tauriProcess = spawn(binPath, [], { cwd: appDir, stdio: "ignore" });
       tauriProcess.on("error", (err) => {
         api.logger.warn(`Claw Sama process error: ${err.message}`);
         tauriProcess = null;
@@ -1336,17 +1333,12 @@ $bmp.Dispose()
     api.on("gateway_stop", () => {
       if (tauriProcess) {
         api.logger.info("Stopping Claw Sama...");
+        const proc = tauriProcess;
         tauriProcess = null;
-        if (launchedAsAppBundle) {
-          // `open -a` spawns a detached process, use osascript to quit gracefully
-          spawn("osascript", ["-e", 'quit app "claw-sama"'], { stdio: "ignore" });
-        } else {
-          const proc = tauriProcess;
-          proc?.kill("SIGTERM");
-          setTimeout(() => {
-            try { if (proc && !proc.killed) proc.kill("SIGKILL"); } catch { /* ignore */ }
-          }, 3000);
-        }
+        proc?.kill("SIGTERM");
+        setTimeout(() => {
+          try { if (proc && !proc.killed) proc.kill("SIGKILL"); } catch { /* ignore */ }
+        }, 3000);
       }
     });
   },
