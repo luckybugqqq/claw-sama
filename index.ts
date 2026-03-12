@@ -1134,27 +1134,49 @@ const plugin = {
             api.logger.warn(INSTALL_HINT);
             return;
           }
-          api.logger.info(`No pre-built binary found, running: npx tauri build (cwd: ${appDir})`);
-          const buildProc = spawn("npx", ["tauri", "build"], {
-            cwd: appDir,
-            stdio: "inherit",
-            shell: true,
-          });
-          buildProc.on("error", (err) => {
-            api.logger.warn(`Claw Sama build error: ${err.message}`);
-          });
-          buildProc.on("exit", (code) => {
-            if (code !== 0) {
-              api.logger.warn(`Claw Sama build failed (code: ${code})`);
-              return;
-            }
-            const built = resolveBuiltBinary();
-            if (built) {
-              launchBinary(built);
-            } else {
-              api.logger.warn("Claw Sama build succeeded but binary not found");
-            }
-          });
+          // Install frontend dependencies if node_modules is missing
+          const needsInstall = !existsSync(path.join(appDir, "node_modules"));
+          const doBuild = () => {
+            api.logger.info(`Building Claw Sama: npx tauri build (cwd: ${appDir})`);
+            const buildProc = spawn("npx", ["tauri", "build"], {
+              cwd: appDir,
+              stdio: "inherit",
+              shell: true,
+            });
+            buildProc.on("error", (err) => {
+              api.logger.warn(`Claw Sama build error: ${err.message}`);
+            });
+            buildProc.on("exit", (code) => {
+              if (code !== 0) {
+                api.logger.warn(`Claw Sama build failed (code: ${code})`);
+                return;
+              }
+              const built = resolveBuiltBinary();
+              if (built) {
+                launchBinary(built);
+              } else {
+                api.logger.warn("Claw Sama build succeeded but binary not found");
+              }
+            });
+          };
+
+          if (needsInstall) {
+            api.logger.info(`Installing frontend dependencies: npm install (cwd: ${appDir})`);
+            const installProc = spawn("npm", ["install"], {
+              cwd: appDir,
+              stdio: "inherit",
+              shell: true,
+            });
+            installProc.on("exit", (installCode) => {
+              if (installCode !== 0) {
+                api.logger.warn(`Claw Sama npm install failed (code: ${installCode})`);
+                return;
+              }
+              doBuild();
+            });
+          } else {
+            doBuild();
+          }
         });
       } catch {
         api.logger.warn("Claw Sama: failed to check Rust installation");
