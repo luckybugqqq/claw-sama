@@ -1,0 +1,19 @@
+{
+  "id": "claw-sama",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "emotion": {
+        "type": "string",
+        "description": "Default emotion when sending messages",
+        "default": "happy"
+      },
+      "emotionDuration": {
+        "type": "number",
+        "description": "Auto-reset emotion after this many ms (0 = no reset)",
+        "default": 10000
+      }
+    }
+  }
+}

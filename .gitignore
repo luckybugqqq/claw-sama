@@ -1,0 +1,17 @@
+# Dependencies
+app/node_modules/
+app/package-lock.json
+package-lock.json
+
+# Build outputs
+app/dist/
+app/src-tauri/target/
+app/src-tauri/gen/
+
+# Large binary assets (VRM models)
+app/public/*.vrm
+
+# Runtime / generated data
+prefs.json
+.tmp-tts-*/
+app/public/persona-screenshot.png
