@@ -39,9 +39,7 @@
     ],
     "macOS": {
       "entitlements": "Entitlements.plist",
-      "infoPlist": {
-        "NSMicrophoneUsageDescription": "Claw Sama needs microphone access for voice input."
-      }
+      "infoPlist": "Info.plist"
     }
   }
 }
