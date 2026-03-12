@@ -22,12 +22,10 @@
 ---
 
 <p align="center">
-  <img src="img/display1.gif" width="48%" />
-  <img src="img/display2.png" width="48%" />
-</p>
-<p align="center">
-  <img src="img/display3.png" width="48%" />
-  <img src="img/display4.png" width="48%" />
+  <img src="img/display1.gif" width="80%" /><br/>
+  <img src="img/display2.png" width="80%" /><br/>
+  <img src="img/display3.png" width="80%" /><br/>
+  <img src="img/display4.png" width="80%" />
 </p>
 
 ---
