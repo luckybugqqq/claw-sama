@@ -50,6 +50,7 @@ jobs:
         with:
           name: claw-sama-windows
           path: |
+            app/src-tauri/target/x86_64-pc-windows-msvc/release/claw-sama.exe
             app/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi
             app/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
 
