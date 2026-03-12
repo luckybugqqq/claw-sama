@@ -39,15 +39,17 @@ Claw Sama 是一个基于 [OpenClaw](https://github.com/anthropics/openclaw) 插
 - 待机动画和随机小动作——不说话的时候她也是活的
 - 视线跟踪鼠标或摄像头
 
-### 🧠 AI Conversation / AI 对话
-- Chat via text or voice (hold F10 to speak)
+### 🧠 AI Conversation & Voice / AI 对话与语音
+- Chat via text or voice (hold F10 to speak), she replies with voice — not just text
 - LLM-powered personality — she has her own character, not just a chatbot
 - Configurable persona via SOUL.md & IDENTITY.md — define her personality, speech style, backstory
 - One-click persona generation — take a screenshot of the VRM model, AI creates a matching character profile
-- 文字或语音聊天（按住 F10 说话）
+- Edge TTS (free, Chinese/English/Japanese) or Qwen TTS (20+ expressive voices)
+- 文字或语音聊天（按住 F10 说话），她会用语音回复——不只是文字
 - LLM 驱动的独立人格——不只是聊天机器人，她有自己的性格
 - 通过 SOUL.md 和 IDENTITY.md 自定义人设——定义性格、说话风格、背景故事
 - 一键生成人设——截取模型截图，AI 自动生成匹配的角色设定
+- Edge TTS（免费，中/英/日语音）或通义千问 TTS（20+ 种表现力丰富的语音）
 
 ### 👀 Screen Observation / 屏幕观察
 - Captures your desktop every 60 seconds and AI understands what you're doing
@@ -60,14 +62,6 @@ Claw Sama 是一个基于 [OpenClaw](https://github.com/anthropics/openclaw) 插
 - **写代码？** 提醒你该休息了
 - **看视频？** 一起聊聊内容
 - **刷网页？** 随口聊几句看到的东西
-
-### 🔊 Text-to-Speech / 语音合成
-- Edge TTS — free, supports Chinese / English / Japanese voices
-- Qwen TTS — Alibaba Cloud, rich expressive voices (Cherry, Serena, Momo, and 20+ more)
-- Real-time voice preview in settings
-- Edge TTS——免费，支持中/英/日语音
-- 通义千问 TTS——阿里云，丰富表现力的语音（芊悦、苏瑶、茉兔等 20+ 种）
-- 设置中实时试听
 
 ### 🖥️ Desktop Integration / 桌面集成
 - Always-on-top transparent window — she floats above everything
