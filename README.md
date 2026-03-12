@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <b>AI-powered VRM desktop pet that lives on your screen</b>
+  <b>A VRM AI desktop pet powered by OpenClaw plugin</b>
 </p>
 
 <p align="center">
