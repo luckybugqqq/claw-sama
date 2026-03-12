@@ -1,6 +1,6 @@
 {
   "name": "@luckybugqqq/claw-sama",
-  "version": "0.2.8",
+  "version": "0.2.9",
   "description": "VRM avatar desktop pet plugin for OpenClaw",
   "license": "MIT",
   "type": "module",
@@ -16,7 +16,6 @@
     "app/src-tauri/target/release/bundle/macos/"
   ],
   "peerDependencies": {
-    "openclaw": "*",
-    "@sinclair/typebox": "*"
+    "openclaw": "*"
   }
 }

@@ -1,6 +1,5 @@
 import type { AnyAgentTool, OpenClawPluginApi } from "openclaw/plugin-sdk";
 import { emptyPluginConfigSchema } from "openclaw/plugin-sdk";
-import { Type } from "@sinclair/typebox";
 import type { ServerResponse } from "node:http";
 import type { ChildProcess } from "node:child_process";
 import { spawn, execFileSync } from "node:child_process";
@@ -150,14 +149,20 @@ const MIME_TYPES: Record<string, string> = {
   ".webm": "audio/webm",
 };
 
-const VrmEmotionSchema = Type.Object({
-  emotion: Type.String({
-    description: "The emotion to express on the avatar. One of: " + VALID_EMOTIONS.join(", "),
-  }),
-  intensity: Type.Optional(Type.Number({
-    description: "Emotion intensity from 0 to 1. Default: 1",
-  })),
-});
+const VrmEmotionSchema = {
+  type: "object" as const,
+  properties: {
+    emotion: {
+      type: "string" as const,
+      description: "The emotion to express on the avatar. One of: " + VALID_EMOTIONS.join(", "),
+    },
+    intensity: {
+      type: "number" as const,
+      description: "Emotion intensity from 0 to 1. Default: 1",
+    },
+  },
+  required: ["emotion"],
+};
 
 // ---------------------------------------------------------------------------
 // Pending emotion buffer — tool stores here, llm_output flushes with text
