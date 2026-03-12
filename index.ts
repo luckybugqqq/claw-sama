@@ -125,8 +125,11 @@ function stripThinking(text: string): string {
     break;
   }
 
-  const result = lines.slice(startIdx).join("\n").trim();
-  return result || text.trim();
+  let result = lines.slice(startIdx).join("\n").trim();
+  if (!result) result = text.trim();
+  // Strip internal routing tags like [[reply_to_current]]
+  result = result.replace(/\[\[[\w_]+\]\]/g, "").trim();
+  return result;
 }
 
 function stripMarkdown(text: string): string {
@@ -365,6 +368,8 @@ const plugin = {
               if (result.success && result.audioPath) {
                 const audioId = registerAudioFile(result.audioPath);
                 payload.audioUrl = `${GATEWAY_URL}/plugins/claw-sama/audio/${audioId}`;
+              } else {
+                api.logger.warn("claw-sama TTS failed: " + (result.error || "unknown error"));
               }
             }
           } catch (err) {
