@@ -8,8 +8,6 @@ app/dist/
 app/src-tauri/target/
 app/src-tauri/gen/
 
-# Large binary assets (VRM models)
-app/public/*.vrm
 
 # Runtime / generated data
 prefs.json
