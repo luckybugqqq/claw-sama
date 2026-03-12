@@ -1070,9 +1070,8 @@ $bmp.Dispose()
     });
 
     // ----- List & import VRM models -----
-    // Built-in models are bundled inside the Tauri app (app/public/).
-    // Custom models are stored in workspace/models/ and served via HTTP.
-    const BUILTIN_MODELS = ["/model1.vrm", "/model2.vrm", "/model3.vrm", "/model4.vrm"];
+    // Built-in models (model1-4.vrm) are hardcoded in the frontend.
+    // This endpoint only returns custom models stored in workspace/models/.
     const customModelsDir = path.join(workspaceRoot, "models");
 
     api.registerHttpRoute({
@@ -1094,10 +1093,10 @@ $bmp.Dispose()
               .map((f: string) => `${GATEWAY_URL}/plugins/claw-sama/model/serve/${f}`);
           }
           res.writeHead(200, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
-          res.end(JSON.stringify({ models: [...BUILTIN_MODELS, ...custom] }));
+          res.end(JSON.stringify({ models: custom }));
         } catch {
           res.writeHead(200, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
-          res.end(JSON.stringify({ models: [...BUILTIN_MODELS] }));
+          res.end(JSON.stringify({ models: [] }));
         }
       },
     });

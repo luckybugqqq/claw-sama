@@ -29,6 +29,7 @@ interface SettingsPanelProps {
 type Tab = 'general' | 'voice' | 'model' | 'persona'
 
 const OPENCLAW_URL = 'http://127.0.0.1:18789'
+const BUILTIN_MODELS = ['/model1.vrm', '/model2.vrm', '/model3.vrm', '/model4.vrm']
 
 const EDGE_VOICES = [
   { id: 'zh-CN-XiaoxiaoNeural', label: '晓晓 (女)' },
@@ -115,7 +116,7 @@ export function SettingsPanel({
     fetch(`${OPENCLAW_URL}/plugins/claw-sama/model/list`)
       .then((r) => r.json())
       .then((data) => { if (data.models) setModels(data.models) })
-      .catch(() => {})
+      .catch(() => setModels([]))
     // Fetch current voice + provider
     fetch(`${OPENCLAW_URL}/plugins/claw-sama/voice`)
       .then((r) => r.json())
@@ -453,15 +454,12 @@ export function SettingsPanel({
                 onChange={(e) => { onModelChange(e.target.value); saveModelPath(e.target.value) }}
                 style={selectStyle}
               >
-                {models.map((m) => {
-                  // Built-in: "/model1.vrm" → "model1.vrm"
-                  // Custom:   "http://.../serve/xxx.vrm" → "xxx.vrm (自定义)"
-                  const isCustom = m.startsWith('http')
-                  const name = isCustom
-                    ? decodeURIComponent(m.split('/').pop() || m) + ' (自定义)'
-                    : m.replace(/^\//, '')
-                  return <option key={m} value={m}>{name}</option>
-                })}
+                {BUILTIN_MODELS.map((m) => (
+                  <option key={m} value={m}>{m.replace(/^\//, '')}</option>
+                ))}
+                {models.map((m) => (
+                  <option key={m} value={m}>{decodeURIComponent(m.split('/').pop() || m)} (自定义)</option>
+                ))}
               </select>
 
               <div style={{ marginTop: 12 }}>
