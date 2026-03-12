@@ -110,30 +110,6 @@ async fn stop_cursor_monitor() -> Result<(), String> {
     Ok(())
 }
 
-/// macOS: programmatic window drag via native API (workaround for transparent window)
-#[tauri::command]
-async fn drag_window(window: tauri::Window) -> Result<(), String> {
-    #[cfg(target_os = "macos")]
-    {
-        use objc::{msg_send, sel, sel_impl, class};
-
-        let ns_window = window.ns_window().map_err(|e| e.to_string())?;
-        let ns_window = ns_window as *mut objc::runtime::Object;
-        unsafe {
-            let app: *mut objc::runtime::Object = msg_send![class!(NSApplication), sharedApplication];
-            let event: *mut objc::runtime::Object = msg_send![app, currentEvent];
-            if !event.is_null() {
-                let _: () = msg_send![ns_window, performWindowDragWithEvent: event];
-            }
-        }
-        return Ok(());
-    }
-
-    #[cfg(not(target_os = "macos"))]
-    {
-        window.start_dragging().map_err(|e| e.to_string())
-    }
-}
 
 fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
     let show = MenuItem::with_id(app, "show", "显示/隐藏", true, None::<&str>)?;
@@ -184,7 +160,6 @@ pub fn run() {
             pick_vrm_file,
             start_cursor_monitor,
             stop_cursor_monitor,
-            drag_window,
         ])
         .setup(|app| {
             let window = app.get_webview_window("main").unwrap();

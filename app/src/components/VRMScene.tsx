@@ -8,7 +8,6 @@ import type { VRMAnimation } from '@pixiv/three-vrm-animation'
 import { EmoteController } from '../emote'
 import { LipSync } from '../lip-sync'
 import { getCurrentWindow } from '@tauri-apps/api/window'
-import { invoke } from '@tauri-apps/api/core'
 
 interface VRMSceneProps {
   modelPath: string
@@ -540,8 +539,7 @@ export const VRMScene = forwardRef<VRMSceneHandle, VRMSceneProps>(function VRMSc
     function onPointerDown(e: PointerEvent) {
       if (e.button === 0) {
         // Left click: move window
-        // Use native drag command (works on macOS transparent windows too)
-        invoke('drag_window').catch(() => getCurrentWindow().startDragging())
+        getCurrentWindow().startDragging()
         return
       } else if (e.button === 1) {
         dragMode = 'dolly'

@@ -29,4 +29,3 @@ windows = { version = "0.61", features = ["Win32_UI_WindowsAndMessaging", "Win32
 
 [target.'cfg(target_os = "macos")'.dependencies]
 core-graphics = "0.24"
-objc = "0.2"
