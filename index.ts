@@ -759,7 +759,6 @@ const plugin = {
 
     // ----- Save screenshot to public dir -----
     const screenshotPath = path.join(_extDir, "app", "public", "persona-screenshot.png");
-    api.logger.info(`claw-sama screenshotPath: ${screenshotPath}`);
 
     api.registerHttpRoute({
       path: "/plugins/claw-sama/persona/screenshot",
