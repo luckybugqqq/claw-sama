@@ -4,5 +4,7 @@
 <dict>
     <key>NSMicrophoneUsageDescription</key>
     <string>Claw Sama needs microphone access for voice input.</string>
+    <key>NSSpeechRecognitionUsageDescription</key>
+    <string>Claw Sama uses speech recognition to convert your voice to text.</string>
 </dict>
 </plist>

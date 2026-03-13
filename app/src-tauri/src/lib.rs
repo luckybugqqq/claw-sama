@@ -5,6 +5,9 @@ use tauri::{
     tray::TrayIconBuilder,
 };
 
+#[cfg(target_os = "macos")]
+mod speech_macos;
+
 static MONITORING: AtomicBool = AtomicBool::new(false);
 
 #[derive(Clone, serde::Serialize)]
@@ -115,6 +118,28 @@ async fn stop_cursor_monitor() -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+async fn start_speech_recognition(app: tauri::AppHandle) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        speech_macos::start(app)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = app;
+        Err("Native speech recognition is only supported on macOS".into())
+    }
+}
+
+#[tauri::command]
+async fn stop_speech_recognition() -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        speech_macos::stop()?;
+    }
+    Ok(())
+}
+
 
 fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
     let show = MenuItem::with_id(app, "show", "显示/隐藏", true, None::<&str>)?;
@@ -128,7 +153,7 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
         .icon(app.default_window_icon().unwrap().clone())
         .tooltip("Claw Sama")
         .menu(&menu)
-        .menu_on_left_click(false)
+        .show_menu_on_left_click(false)
         .on_tray_icon_event(|tray, event| {
             if let tauri::tray::TrayIconEvent::Click { button: tauri::tray::MouseButton::Left, .. } = event {
                 let app = tray.app_handle();
@@ -186,6 +211,8 @@ pub fn run() {
             pick_vrm_file,
             start_cursor_monitor,
             stop_cursor_monitor,
+            start_speech_recognition,
+            stop_speech_recognition,
         ])
         .setup(|app| {
             let window = app.get_webview_window("main").unwrap();

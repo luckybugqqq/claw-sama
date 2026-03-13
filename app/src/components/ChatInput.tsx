@@ -1,9 +1,12 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { MessageCircle, Send, X, Loader, Mic, ChevronDown } from 'lucide-react'
+import { invoke } from '@tauri-apps/api/core'
+import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 
 const OPENCLAW_URL = 'http://127.0.0.1:18789/plugins/claw-sama/chat'
 
 const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+const USE_NATIVE_STT = !SpeechRecognition
 
 export function ChatInput({ visible = true, onActiveChange, uiAlign = 'right' }: { visible?: boolean; onActiveChange?: (hasText: boolean) => void; uiAlign?: 'left' | 'right' }) {
   const [open, setOpen] = useState(false)
@@ -12,6 +15,7 @@ export function ChatInput({ visible = true, onActiveChange, uiAlign = 'right' }:
   const [recording, setRecording] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const recognitionRef = useRef<any>(null)
+  const unlistenRef = useRef<UnlistenFn | null>(null)
 
   const send = useCallback(async (msg?: string) => {
     const finalMsg = (msg ?? text).trim()
@@ -33,6 +37,26 @@ export function ChatInput({ visible = true, onActiveChange, uiAlign = 'right' }:
   }, [text, sending])
 
   const startRecording = useCallback(async () => {
+    if (USE_NATIVE_STT) {
+      // macOS: use Tauri native SFSpeechRecognizer
+      try {
+        const unlisten = await listen<{ text: string; isFinal: boolean }>('speech-result', (event) => {
+          setText(event.payload.text)
+          onActiveChange?.(event.payload.text.length > 0)
+        })
+        unlistenRef.current = unlisten
+        await invoke('start_speech_recognition')
+        setRecording(true)
+        setOpen(true)
+      } catch (err) {
+        console.error('Native speech recognition error:', err)
+        unlistenRef.current?.()
+        unlistenRef.current = null
+      }
+      return
+    }
+
+    // Windows: use Web Speech API
     if (!SpeechRecognition) {
       console.error('SpeechRecognition not supported')
       return
@@ -69,6 +93,14 @@ export function ChatInput({ visible = true, onActiveChange, uiAlign = 'right' }:
   }, [])
 
   const stopRecording = useCallback(() => {
+    if (USE_NATIVE_STT) {
+      invoke('stop_speech_recognition').catch(console.error)
+      unlistenRef.current?.()
+      unlistenRef.current = null
+      setRecording(false)
+      return
+    }
+
     if (recognitionRef.current) {
       recognitionRef.current.stop()
       recognitionRef.current = null
