@@ -220,7 +220,8 @@ export class MotionController {
 
       this.onDanceStart?.()
 
-      // Play BGM if preset has one
+      // Play BGM if preset has one (stop any lingering audio first)
+      this.stopBgmImmediate()
       if (preset?.bgm) {
         this.bgmAudio = new Audio(preset.bgm)
         this.bgmAudio.loop = true
@@ -261,7 +262,7 @@ export class MotionController {
     this.onDanceStop?.()
   }
 
-  /** Stop BGM audio immediately with fade. Safe to call anytime. */
+  /** Stop BGM with fade-out. Safe to call anytime. */
   private stopBgm() {
     if (!this.bgmAudio) return
     const audio = this.bgmAudio
@@ -273,6 +274,13 @@ export class MotionController {
         audio.pause()
       }
     }, 50)
+  }
+
+  /** Stop BGM instantly without fade. Used to prevent duplicate playback. */
+  private stopBgmImmediate() {
+    if (!this.bgmAudio) return
+    this.bgmAudio.pause()
+    this.bgmAudio = null
   }
 
   /** Cleanup when controller is being destroyed (model reload etc.) */

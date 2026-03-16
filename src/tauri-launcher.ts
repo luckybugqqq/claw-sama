@@ -3,12 +3,47 @@
  */
 import type { ChildProcess } from "node:child_process";
 import { spawn, execFileSync } from "node:child_process";
+import { createRequire } from "node:module";
 import { existsSync } from "node:fs";
 import path from "node:path";
 
+const require = createRequire(import.meta.url);
+
 let tauriProcess: ChildProcess | null = null;
 
+/** Platform sub-package mapping: `${process.platform}-${process.arch}` → package + binary name */
+const PLATFORM_PACKAGES: Record<string, { pkg: string; bin: string }> = {
+  "win32-x64":    { pkg: "@luckybugqqq/claw-sama-win32-x64",   bin: "claw-sama.exe" },
+  "darwin-arm64": { pkg: "@luckybugqqq/claw-sama-darwin-arm64", bin: "claw-sama" },
+  "darwin-x64":   { pkg: "@luckybugqqq/claw-sama-darwin-x64",   bin: "claw-sama" },
+};
+
+/** Try to resolve binary from the installed optional dependency package. */
+function resolveFromOptionalDep(): string | null {
+  const key = `${process.platform}-${process.arch}`;
+  const entry = PLATFORM_PACKAGES[key];
+  if (!entry) return null;
+  try {
+    const pkgJson = require.resolve(`${entry.pkg}/package.json`);
+    const binPath = path.join(path.dirname(pkgJson), entry.bin);
+    if (existsSync(binPath)) return binPath;
+  } catch {
+    // Package not installed (wrong platform or dev environment)
+  }
+  return null;
+}
+
 function resolveBuiltBinary(appDir: string): string | null {
+  // 1. Try installed optional dependency (production path via npm)
+  const fromDep = resolveFromOptionalDep();
+  if (fromDep) {
+    if (process.platform !== "win32") {
+      try { execFileSync("chmod", ["+x", fromDep]); } catch {}
+    }
+    return fromDep;
+  }
+
+  // 2. Fallback: local build directory (development)
   const releaseDir = path.join(appDir, "src-tauri", "target", "release");
   const macArch = process.arch === "arm64" ? "aarch64" : "x86_64";
   const candidates: string[] =

@@ -43,18 +43,22 @@ Claw Sama 是一个基于 [OpenClaw](https://github.com/anthropics/openclaw) 插
 - Lip-sync perfectly matched to voice output
 - Idle animations & random fidgets — she's alive even when you're not talking
 - Eyes follow your mouse cursor or camera
+- 5 built-in VRM models + import your own custom models
 - 3D VRM 模型，实时面部表情切换
 - 口型与语音完美同步
 - 待机动画和随机小动作——不说话的时候她也是活的
 - 视线跟踪鼠标或摄像头
+- 5 款内置 VRM 模型 + 支持导入自定义模型
 
 ### 🧠 AI Conversation & Voice / AI 对话与语音
 - Chat via text or voice (hold F10 to speak), she replies with voice — not just text
+- Voice call mode with redesigned UI — smooth, immersive voice conversations
 - LLM-powered personality — she has her own character, not just a chatbot
 - Configurable persona via SOUL.md & IDENTITY.md — define her personality, speech style, backstory
 - One-click persona generation — take a screenshot of the VRM model, AI creates a matching character profile
 - Edge TTS (free, Chinese/English/Japanese) or Qwen TTS (20+ expressive voices)
 - 文字或语音聊天（按住 F10 说话），她会用语音回复——不只是文字
+- 语音通话模式，全新 UI 设计——流畅沉浸的语音对话体验
 - LLM 驱动的独立人格——不只是聊天机器人，她有自己的性格
 - 通过 SOUL.md 和 IDENTITY.md 自定义人设——定义性格、说话风格、背景故事
 - 一键生成人设——截取模型截图，AI 自动生成匹配的角色设定
@@ -71,6 +75,14 @@ Claw Sama 是一个基于 [OpenClaw](https://github.com/anthropics/openclaw) 插
 - **调试 React 组件？** 她发现你卡了好一会儿，建议你起来活动活动
 - **在 B 站看电影？** 她会吐槽刚才的剧情反转
 - **在看技术文档？** 她默默给你打气："加油，你可以的！"
+
+### 💃 Dance System / 舞蹈系统
+- VMD dance playback with BGM — pick a preset and watch her dance
+- Expanded FBX action pool — richer idle animations and emotional reactions
+- Full-body IK (Inverse Kinematics) — natural motion retargeting from VMD/FBX to VRM
+- VMD 舞蹈播放配合 BGM——选择预设即可观赏舞蹈
+- 扩展的 FBX 动作库——更丰富的待机动画和情绪反应
+- 全身 IK（逆运动学）——从 VMD/FBX 到 VRM 的自然动作重定向
 
 ### 🖥️ Desktop Integration / 桌面集成
 - Always-on-top transparent window — she floats above everything
@@ -117,6 +129,7 @@ Open settings via the gear icon on the avatar window: / 点击角色窗口上的
 | Voice / 语音 | TTS provider (Edge/Qwen), voice selection with preview / TTS 服务商、语音选择与试听 |
 | Model / 形象 | Built-in VRM models, import custom .vrm / 内置VRM模型、导入自定义模型 |
 | Persona / 人设 | Edit IDENTITY.md & SOUL.md, one-click AI generation / 编辑人设文件、一键AI生成 |
+| Dance / 舞蹈 | Dance presets with BGM, VMD playback / 舞蹈预设与BGM、VMD播放 |
 
 ## Architecture / 架构
 
@@ -127,8 +140,11 @@ claw-sama/
 │   ├── src/              # React + Three.js frontend / 前端
 │   │   ├── components/   # VRMScene, TextBubble, ChatInput, SettingsPanel
 │   │   ├── emote.ts      # Emotion controller / 表情控制器
-│   │   └── lip-sync.ts   # Audio-driven lip sync / 口型同步
-│   ├── public/           # VRM models & animations / 模型和动画
+│   │   ├── lip-sync.ts   # Audio-driven lip sync / 口型同步
+│   │   ├── motion-controller.ts  # Dance & action orchestration / 舞蹈与动作编排
+│   │   ├── vmd-loader.ts # VMD dance file parser / VMD 舞蹈文件解析
+│   │   └── vrm-ik-handler.ts    # Full-body IK retargeting / 全身IK重定向
+│   ├── public/           # VRM models, animations & BGM / 模型、动画和BGM
 │   └── src-tauri/        # Tauri desktop shell / 桌面外壳
 └── package.json
 ```
@@ -144,6 +160,7 @@ claw-sama/
 ## Acknowledgments / 致谢
 
 - Inspired by [AIRI](https://github.com/moeru-ai/airi) — an AI companion project by moeru-ai
+- Inspired by [Lobe Vidol](https://github.com/lobehub/lobe-vidol) — virtual idol interaction by LobeHub
 
 ## License / 许可
 

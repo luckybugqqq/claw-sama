@@ -9,6 +9,11 @@ app/src-tauri/target/
 app/src-tauri/gen/
 
 
+# Platform sub-package binaries (placed by CI)
+npm/win32-x64/claw-sama.exe
+npm/darwin-arm64/claw-sama
+npm/darwin-x64/claw-sama
+
 # Runtime / generated data
 prefs.json
 .tmp-tts-*/

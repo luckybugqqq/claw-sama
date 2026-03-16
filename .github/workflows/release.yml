@@ -97,8 +97,68 @@ jobs:
           files: artifacts/**
           generate_release_notes: true
 
-  publish-npm:
+  publish-npm-platforms:
     needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - artifact: claw-sama-windows
+            npm_dir: npm/win32-x64
+            binary_name: claw-sama.exe
+          - artifact: claw-sama-bin-aarch64-apple-darwin
+            npm_dir: npm/darwin-arm64
+            binary_name: claw-sama
+          - artifact: claw-sama-bin-x86_64-apple-darwin
+            npm_dir: npm/darwin-x64
+            binary_name: claw-sama
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: artifacts
+
+      - name: Sync version from root package.json
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          cd ${{ matrix.npm_dir }}
+          node -e "
+            const fs = require('fs');
+            const p = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+            p.version = '$VERSION';
+            fs.writeFileSync('package.json', JSON.stringify(p, null, 2) + '\n');
+          "
+          echo "Set version to $VERSION"
+
+      - name: Place binary into sub-package
+        run: |
+          bin=$(find artifacts -name '${{ matrix.binary_name }}' -type f | head -1)
+          if [ -z "$bin" ]; then
+            echo "ERROR: ${{ matrix.binary_name }} not found in artifacts"
+            exit 1
+          fi
+          cp "$bin" "${{ matrix.npm_dir }}/${{ matrix.binary_name }}"
+          chmod +x "${{ matrix.npm_dir }}/${{ matrix.binary_name }}"
+          ls -la "${{ matrix.npm_dir }}/"
+
+      - name: Publish platform package
+        working-directory: ${{ matrix.npm_dir }}
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  publish-npm:
+    needs: publish-npm-platforms
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -109,43 +169,7 @@ jobs:
           node-version: 20
           registry-url: https://registry.npmjs.org
 
-      - name: Download build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-
-      - name: List downloaded artifacts
-        run: find artifacts -type f -o -type d | head -50
-
-      - name: Place binaries for npm package
-        run: |
-          mkdir -p app/src-tauri/target/release
-
-          # Windows exe
-          exe=$(find artifacts -name 'claw-sama.exe' -type f | head -1)
-          if [ -n "$exe" ]; then
-            cp "$exe" app/src-tauri/target/release/claw-sama.exe
-            echo "Found exe: $exe"
-          else
-            echo "WARNING: claw-sama.exe not found"
-          fi
-
-          # macOS raw binaries (no .app bundle — avoids signing & permission issues)
-          for arch in aarch64 x86_64; do
-            bin=$(find artifacts -path "*${arch}*" -name 'claw-sama' -type f | head -1)
-            if [ -n "$bin" ]; then
-              cp "$bin" "app/src-tauri/target/release/claw-sama-${arch}-apple-darwin"
-              chmod +x "app/src-tauri/target/release/claw-sama-${arch}-apple-darwin"
-              echo "Found ${arch} binary: $bin"
-            else
-              echo "WARNING: ${arch} binary not found"
-            fi
-          done
-
-          echo "=== npm package contents ==="
-          find app/src-tauri/target/release -type f | head -20
-
-      - name: Publish to npm
+      - name: Publish main package
         run: npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

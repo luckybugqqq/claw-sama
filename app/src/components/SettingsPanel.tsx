@@ -42,7 +42,7 @@ interface SettingsPanelProps {
 type Tab = 'general' | 'voice' | 'model' | 'persona' | 'dance'
 
 const OPENCLAW_URL = 'http://127.0.0.1:18789'
-const BUILTIN_MODELS = ['/model1.vrm', '/model2.vrm', '/model3.vrm', '/model4.vrm']
+const BUILTIN_MODELS = ['/model1.vrm', '/model2.vrm', '/model3.vrm', '/model4.vrm', '/model5.vrm']
 
 const EDGE_VOICES = [
   { id: 'zh-CN-XiaoxiaoNeural', label: '晓晓 (女)' },
