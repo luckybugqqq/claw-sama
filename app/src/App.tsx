@@ -12,7 +12,7 @@ import { bindScene } from './api'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { listen } from '@tauri-apps/api/event'
 import { HistoryPanel } from './components/HistoryPanel'
-import { Menu, Pin, Move, RotateCcw, Rotate3D, EyeOff, Settings } from 'lucide-react'
+import { Menu, Pin, Move, RotateCcw, Rotate3D, EyeOff, Settings, Music } from 'lucide-react'
 
 const DEFAULT_MODEL = '/model1.vrm'
 const OPENCLAW_URL = 'http://127.0.0.1:18789'
@@ -21,16 +21,21 @@ const OPENCLAW_URL = 'http://127.0.0.1:18789'
 let lastTouchChatTime = 0
 const TOUCH_CHAT_COOLDOWN = 30_000
 
-// 情绪 → 动作映射
+// 情绪 → 动作映射 (action names from motion-controller presets)
 const emotionActionMap: Record<string, string> = {
   think: 'scratchHead',
-  question: 'scratchHead',
+  question: 'point',
   curious: 'scratchHead',
-  happy: 'stretch',
-  surprised: 'stretch',
-  angry: 'akimbo',
+  happy: 'happy',
+  surprised: 'excited',
+  angry: 'angry',
   awkward: 'playFingers',
-  sad: 'playFingers',
+  sad: 'bow',
+  love: 'shy',
+  flirty: 'shy',
+  greeting: 'greeting',
+  relaxed: 'handGesture',
+  neutral: 'handGesture',
 }
 
 
@@ -63,6 +68,9 @@ export default function App() {
   const [hideUI, setHideUI] = useState(false)
   const [volume, setVolume] = useState(1)
   const [uiAlign, setUiAlign] = useState<'left' | 'right'>('right')
+  const [dancing, setDancing] = useState(false)
+  const [currentDance, setCurrentDance] = useState('jile')
+  const [customDancePreset, setCustomDancePreset] = useState<import('./motion-controller').DancePreset | undefined>(undefined)
   const [screenObserve, setScreenObserve] = useState(false)
   const [screenObserveInterval, setScreenObserveInterval] = useState(60)
   usePassThrough(!settingsOpen && !historyOpen)
@@ -77,10 +85,12 @@ export default function App() {
         if (s.showText !== undefined) setShowText(s.showText)
         if (s.hideUI !== undefined) setHideUI(s.hideUI)
         if (s.tracking) { setTracking(s.tracking); sceneRef.current?.setTrackingMode(s.tracking) }
-        if (s.volume !== undefined) { setVolume(s.volume); LipSync.getInstance().setVolume(s.volume) }
+        if (s.volume !== undefined) { setVolume(s.volume); LipSync.getInstance().setVolume(s.volume); sceneRef.current?.setBgmVolume(s.volume) }
         if (s.uiAlign) setUiAlign(s.uiAlign)
         if (s.screenObserve !== undefined) setScreenObserve(s.screenObserve)
         if (s.screenObserveInterval !== undefined) setScreenObserveInterval(s.screenObserveInterval)
+        if (s.currentDance) setCurrentDance(s.currentDance)
+        if (s.customDancePreset) setCustomDancePreset(s.customDancePreset)
       })
       .catch(() => {})
   }, [])
@@ -106,6 +116,7 @@ export default function App() {
   const handleVolumeChange = useCallback((v: number) => {
     setVolume(v)
     LipSync.getInstance().setVolume(v)
+    sceneRef.current?.setBgmVolume(v)
     saveSettings({ volume: v })
   }, [])
 
@@ -118,6 +129,7 @@ export default function App() {
   const handleVrmMessage: OnVrmMessage = useCallback((msg) => {
     if (msg.emotion && sceneRef.current) {
       const action = emotionActionMap[msg.emotion]
+      console.log('[App] emotion:', msg.emotion, '→ action:', action)
       if (msg.text) {
         // 回复消息：表情和动作同时触发（文字出现1s后由TextBubble延迟调用）
         sceneRef.current.setEmotionWithReset(msg.emotion, msg.emotionDuration ?? 5000, msg.emotionIntensity)
@@ -140,8 +152,16 @@ export default function App() {
   }, [originalHandleVrmMessage])
 
   useEffect(() => {
-    const fidgetEmotions = ['happy', 'curious', 'awkward', 'surprised', 'think'] as const
-    const IDLE_THRESHOLD_MS = 60_000
+    const allEmotions = [
+      'happy', 'sad', 'angry', 'surprised', 'think', 'awkward',
+      'question', 'curious', 'neutral', 'love', 'flirty', 'greeting', 'relaxed',
+    ]
+    const allActions = [
+      'akimbo', 'playFingers', 'scratchHead', 'stretch',
+      'happy', 'angry', 'greeting', 'excited', 'shy',
+      'point', 'bow', 'salute', 'handGesture', 'angryPump',
+    ]
+    const IDLE_THRESHOLD_MS = 30_000
     const FIDGET_CHECK_MS = 15_000 // check every 15s, randomness inside
 
     const timer = setInterval(() => {
@@ -150,11 +170,11 @@ export default function App() {
       // 50% chance each check to avoid being too predictable
       if (Math.random() > 0.5) return
 
-      const emotion = fidgetEmotions[Math.floor(Math.random() * fidgetEmotions.length)]
-      const action = emotionActionMap[emotion]
+      const emotion = allEmotions[Math.floor(Math.random() * allEmotions.length)]
+      const action = allActions[Math.floor(Math.random() * allActions.length)]
       const intensity = 0.4 + Math.random() * 0.4 // 0.4–0.8
       sceneRef.current?.setEmotionWithReset(emotion, 3000 + Math.random() * 2000, intensity)
-      if (action) sceneRef.current?.playAction(action)
+      sceneRef.current?.playAction(action)
       lastActivityRef.current = Date.now() // reset so we don't spam
     }, FIDGET_CHECK_MS)
 
@@ -214,44 +234,67 @@ export default function App() {
   }, [])
 
   // ── Touch interaction: immediate reaction + verbal response ──────────
-  const touchVisuals: Record<TouchRegion, { emotion: string; action?: string }> = {
-    head:  { emotion: 'happy',     action: 'stretch' },
-    body:  { emotion: 'surprised', action: 'playFingers' },
-    hand:  { emotion: 'happy',     action: 'playFingers' },
-    leg:   { emotion: 'awkward',   action: 'playFingers' },
+  // Each region has multiple possible reactions, randomly selected (from lobe-vidol female defaults)
+  const touchReactions: Record<TouchRegion, { emotion: string; action?: string }[]> = {
+    head: [
+      { emotion: 'happy', action: 'happy' },
+      { emotion: 'happy', action: 'happy' },
+      { emotion: 'love', action: 'shy' },
+      { emotion: 'relaxed', action: 'salute' },
+      { emotion: 'angry', action: 'angry' },
+    ],
+    arm: [
+      { emotion: 'happy', action: 'happy' },
+      { emotion: 'relaxed', action: 'greeting' },
+      { emotion: 'happy', action: 'handGesture' },
+      { emotion: 'relaxed', action: 'akimbo' },
+    ],
+    chest: [
+      { emotion: 'angry', action: 'angryPump' },
+      { emotion: 'angry', action: 'angry' },
+      { emotion: 'surprised', action: 'excited' },
+      { emotion: 'angry', action: 'point' },
+    ],
+    belly: [
+      { emotion: 'surprised', action: 'excited' },
+      { emotion: 'angry', action: 'angry' },
+      { emotion: 'awkward', action: 'playFingers' },
+      { emotion: 'angry', action: 'akimbo' },
+    ],
+    buttocks: [
+      { emotion: 'angry', action: 'angryPump' },
+      { emotion: 'surprised', action: 'excited' },
+      { emotion: 'angry', action: 'point' },
+      { emotion: 'sad', action: 'bow' },
+    ],
+    leg: [
+      { emotion: 'surprised', action: 'stretch' },
+      { emotion: 'angry', action: 'angry' },
+      { emotion: 'angry', action: 'point' },
+      { emotion: 'angry', action: 'angryPump' },
+      { emotion: 'awkward', action: 'playFingers' },
+    ],
   }
 
-  // Track touch counts per region within the cooldown window
-  const touchCountsRef = useRef<Record<string, number>>({})
-
   const regionLabels: Record<TouchRegion, string> = {
-    head: '头', body: '身体', hand: '手', leg: '腿',
+    head: '头', arm: '手臂', chest: '胸', belly: '肚子', buttocks: '屁股', leg: '腿',
   }
 
   const handleTouch = useCallback((region: TouchRegion) => {
-    const visual = touchVisuals[region]
-    if (!visual) return
+    const reactions = touchReactions[region]
+    if (!reactions?.length) return
+    const visual = reactions[Math.floor(Math.random() * reactions.length)]
 
     // Immediate visual feedback (always)
     lastActivityRef.current = Date.now()
     sceneRef.current?.setEmotionWithReset(visual.emotion, 3000, 0.8)
     if (visual.action) sceneRef.current?.playAction(visual.action)
 
-    // Accumulate touch counts
-    touchCountsRef.current[region] = (touchCountsRef.current[region] || 0) + 1
-
     // Send to backend for verbal response (rate-limited, module-level cooldown)
     const now = Date.now()
-    if (now - lastTouchChatTime > TOUCH_CHAT_COOLDOWN) {
+    if (now - lastTouchChatTime > TOUCH_CHAT_COOLDOWN && Math.random() < 0.2) {
       lastTouchChatTime = now
-
-      // Build summary prompt from accumulated counts
-      const parts = Object.entries(touchCountsRef.current)
-        .filter(([, count]) => count > 0)
-        .map(([r, count]) => `${regionLabels[r as TouchRegion]}${count}次`)
-      const summary = parts.join('、')
-      const prompt = `[用户摸了你的${summary}]`
-      touchCountsRef.current = {}
+      const prompt = `[用户摸了摸你的${regionLabels[region]}]`
 
       fetch(`${OPENCLAW_URL}/plugins/claw-sama/touch`, {
         method: 'POST',
@@ -308,6 +351,12 @@ export default function App() {
         screenObserveInterval={screenObserveInterval}
         onScreenObserveIntervalChange={(v) => { setScreenObserveInterval(v); saveSettings({ screenObserveInterval: v }) }}
         captureVrmScreenshot={() => sceneRef.current?.captureScreenshot() ?? null}
+        currentDance={currentDance}
+        onDanceChange={(id, preset) => {
+          setCurrentDance(id)
+          setCustomDancePreset(preset)
+          saveSettings({ currentDance: id, customDancePreset: preset })
+        }}
       />
       {!hideUI && <div
         style={{
@@ -402,6 +451,28 @@ export default function App() {
             title="重置视角"
           >
             <RotateCcw size={16} />
+          </button>
+          <button
+            onClick={() => {
+              if (dancing) {
+                sceneRef.current?.stopDance()
+                setDancing(false)
+              } else {
+                if (currentDance.startsWith('custom:') && customDancePreset) {
+                  sceneRef.current?.playDance(customDancePreset)
+                } else {
+                  sceneRef.current?.playDance(currentDance)
+                }
+                setDancing(true)
+              }
+            }}
+            style={{
+              ...btnStyle,
+              ...(dancing ? { background: 'rgba(34, 197, 94, 0.6)' } : {}),
+            }}
+            title={dancing ? '停止跳舞' : '跳舞'}
+          >
+            <Music size={16} />
           </button>
         </>}
       </div>}

@@ -72,6 +72,34 @@ const emotionStates = new Map<string, EmotionState>([
     ],
     blendDuration: 0.6,
   }],
+  ['love', {
+    expression: [
+      { name: 'happy', value: 0.6 },
+      { name: 'relaxed', value: 0.4 },
+    ],
+    blendDuration: 0.4,
+  }],
+  ['flirty', {
+    expression: [
+      { name: 'happy', value: 0.5 },
+      { name: 'relaxed', value: 0.3 },
+      { name: 'aa', value: 0.15 },
+    ],
+    blendDuration: 0.4,
+  }],
+  ['greeting', {
+    expression: [
+      { name: 'happy', value: 0.6 },
+      { name: 'aa', value: 0.3 },
+    ],
+    blendDuration: 0.3,
+  }],
+  ['relaxed', {
+    expression: [
+      { name: 'relaxed', value: 0.8 },
+    ],
+    blendDuration: 0.5,
+  }],
 ])
 
 export class EmoteController {

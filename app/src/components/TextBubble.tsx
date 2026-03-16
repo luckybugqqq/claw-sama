@@ -425,7 +425,7 @@ const popCharStyle: React.CSSProperties = {
 
 const containerStyle: React.CSSProperties = {
   position: 'absolute',
-  bottom: 88,
+  bottom: 80,
   left: 0,
   width: '100%',
   zIndex: 200,

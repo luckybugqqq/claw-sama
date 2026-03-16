@@ -19,6 +19,13 @@ export interface ClawSamaPrefs {
   uiAlign?: "left" | "right";
   screenObserve?: boolean;
   screenObserveInterval?: number;
+  currentDance?: string;
+  customDancePreset?: {
+    label: string;
+    type: string;
+    url: string;
+    bgm?: string;
+  };
 }
 
 const _srcDir = typeof __dirname !== "undefined" ? __dirname : path.dirname(fileURLToPath(import.meta.url));
@@ -32,10 +39,10 @@ export const openclawWorkspaceRoot = (profile && profile.toLowerCase() !== "defa
   : path.join(homeDir, ".openclaw", "workspace");
 export const workspaceRoot = path.join(openclawWorkspaceRoot, "claw-sama");
 
-const PREFS_PATH = path.join(workspaceRoot, "clawsama.json");
+const PREFS_PATH = path.join(workspaceRoot, "claw-sama.json");
 
 // Legacy path for migration
-const LEGACY_PREFS_PATH = path.join(EXT_DIR, "prefs.json");
+const LEGACY_PREFS_PATH = path.join(workspaceRoot, "clawsama.json");
 
 const DEFAULT_PREFS: ClawSamaPrefs = {
   provider: "edge",
@@ -47,7 +54,7 @@ export function loadPrefs(): ClawSamaPrefs {
     if (existsSync(PREFS_PATH)) {
       return { ...DEFAULT_PREFS, ...JSON.parse(readFileSync(PREFS_PATH, "utf8")) as ClawSamaPrefs };
     }
-    // Migrate from legacy path
+    // Migrate from legacy clawsama.json
     if (existsSync(LEGACY_PREFS_PATH)) {
       const prefs = { ...DEFAULT_PREFS, ...JSON.parse(readFileSync(LEGACY_PREFS_PATH, "utf8")) as ClawSamaPrefs };
       savePrefs(prefs);

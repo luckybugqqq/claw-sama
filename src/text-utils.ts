@@ -4,6 +4,7 @@
 
 export const VALID_EMOTIONS = [
   "happy", "sad", "angry", "surprised", "think", "awkward", "question", "curious", "neutral",
+  "love", "flirty", "greeting", "relaxed",
 ] as const;
 
 /**
@@ -76,5 +77,7 @@ export function stripEmoji(text: string): string {
  */
 export function splitSentences(text: string): string[] {
   const parts = text.split(/(?<=[。！？；\n.!?;])\s*/);
-  return parts.map((s) => s.trim()).filter(Boolean);
+  return parts
+    .map((s) => s.trim())
+    .filter((s) => s && !/^[。！？；.!?;、，,\s]+$/.test(s));
 }

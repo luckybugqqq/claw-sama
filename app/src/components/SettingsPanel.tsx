@@ -1,7 +1,16 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { X, Play, Loader, Sparkles } from 'lucide-react'
+import { X, Play, Loader, Sparkles, Trash2, Upload, Music } from 'lucide-react'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { invoke } from '@tauri-apps/api/core'
+import { dancePresets, type DancePreset } from '../motion-controller'
+
+interface DanceItem {
+  id: string
+  label: string
+  vmdUrl: string
+  bgmUrl?: string
+  builtin?: boolean
+}
 
 interface SettingsPanelProps {
   visible: boolean
@@ -26,9 +35,11 @@ interface SettingsPanelProps {
   onScreenObserveIntervalChange: (v: number) => void
   /** Return a data URL screenshot of the current VRM canvas */
   captureVrmScreenshot?: () => string | null
+  currentDance: string
+  onDanceChange: (id: string, preset?: DancePreset) => void
 }
 
-type Tab = 'general' | 'voice' | 'model' | 'persona'
+type Tab = 'general' | 'voice' | 'model' | 'persona' | 'dance'
 
 const OPENCLAW_URL = 'http://127.0.0.1:18789'
 const BUILTIN_MODELS = ['/model1.vrm', '/model2.vrm', '/model3.vrm', '/model4.vrm']
@@ -89,6 +100,7 @@ export function SettingsPanel({
   screenObserve, onScreenObserveChange,
   screenObserveInterval, onScreenObserveIntervalChange,
   captureVrmScreenshot,
+  currentDance, onDanceChange,
 }: SettingsPanelProps) {
   const [tab, setTab] = useState<Tab>('general')
   const [models, setModels] = useState<string[]>([])
@@ -103,6 +115,8 @@ export function SettingsPanel({
   const [qwenModel, setQwenModel] = useState('qwen3-tts-flash')
   const [previewingId, setPreviewingId] = useState<string | null>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
+  const [customDances, setCustomDances] = useState<DanceItem[]>([])
+  const [importingDance, setImportingDance] = useState(false)
 
   // Drag state
   const [panelPos, setPanelPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
@@ -173,6 +187,18 @@ export function SettingsPanel({
       })
       .catch(() => {})
   }, [visible, tab])
+
+  const fetchCustomDances = useCallback(() => {
+    fetch(`${OPENCLAW_URL}/plugins/claw-sama/dance/list`)
+      .then((r) => r.json())
+      .then((data) => { if (data.dances) setCustomDances(data.dances) })
+      .catch(() => setCustomDances([]))
+  }, [])
+
+  useEffect(() => {
+    if (!visible || tab !== 'dance') return
+    fetchCustomDances()
+  }, [visible, tab, fetchCustomDances])
 
   const savePersona = useCallback(() => {
     setPersonaSaving(true)
@@ -298,13 +324,13 @@ export function SettingsPanel({
 
         {/* Tabs */}
         <div style={tabBarStyle}>
-          {(['general', 'voice', 'model', 'persona'] as const).map((t) => (
+          {(['general', 'voice', 'model', 'persona', 'dance'] as const).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
               style={{ ...tabStyle, ...(tab === t ? activeTabStyle : {}) }}
             >
-              {{ general: '常规', voice: '语音', model: '形象', persona: '人设' }[t]}
+              {{ general: '常规', voice: '语音', model: '形象', persona: '人设', dance: '舞蹈' }[t]}
             </button>
           ))}
         </div>
@@ -611,6 +637,155 @@ export function SettingsPanel({
               </div>
               <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', marginTop: 4 }}>
                 关联工作区根目录的 IDENTITY.md 和 SOUL.md
+              </div>
+            </div>
+          )}
+
+          {tab === 'dance' && (
+            <div style={sectionStyle}>
+              <div style={labelStyle}>内置舞蹈</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {Object.entries(dancePresets).map(([id, preset]) => (
+                  <div
+                    key={id}
+                    onClick={() => onDanceChange(id)}
+                    style={{
+                      ...modelBtnStyle,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: '8px 12px',
+                      fontSize: 13,
+                      background: currentDance === id ? 'rgba(100, 160, 255, 0.4)' : 'rgba(255, 255, 255, 0.08)',
+                      borderColor: currentDance === id ? 'rgba(100, 160, 255, 0.6)' : 'rgba(255, 255, 255, 0.15)',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <Music size={14} style={{ opacity: 0.6 }} />
+                      <span>{preset.label}</span>
+                    </div>
+                    {preset.bgm && (
+                      <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)' }}>含BGM</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {customDances.length > 0 && (
+                <div style={{ marginTop: 12 }}>
+                  <div style={labelStyle}>自定义舞蹈</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    {customDances.map((dance) => (
+                      <div
+                        key={dance.id}
+                        onClick={() => onDanceChange(`custom:${dance.id}`, {
+                          label: dance.label,
+                          type: 'vmd',
+                          url: dance.vmdUrl,
+                          bgm: dance.bgmUrl,
+                        })}
+                        style={{
+                          ...modelBtnStyle,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          padding: '8px 10px',
+                          fontSize: 13,
+                          background: currentDance === `custom:${dance.id}` ? 'rgba(100, 160, 255, 0.4)' : 'rgba(255, 255, 255, 0.08)',
+                          borderColor: currentDance === `custom:${dance.id}` ? 'rgba(100, 160, 255, 0.6)' : 'rgba(255, 255, 255, 0.15)',
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <Music size={14} style={{ opacity: 0.6 }} />
+                          <div>
+                            <div>{dance.label}</div>
+                            {dance.bgmUrl && (
+                              <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', marginTop: 1 }}>含BGM</div>
+                            )}
+                          </div>
+                        </div>
+                        <div
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            fetch(`${OPENCLAW_URL}/plugins/claw-sama/dance/delete`, {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ id: dance.id }),
+                            })
+                              .then(() => {
+                                fetchCustomDances()
+                                if (currentDance === `custom:${dance.id}`) onDanceChange('love')
+                              })
+                              .catch(() => {})
+                          }}
+                          style={{
+                            width: 28,
+                            height: 28,
+                            borderRadius: 6,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            background: 'rgba(255, 255, 255, 0.08)',
+                            cursor: 'pointer',
+                            flexShrink: 0,
+                            opacity: 0.5,
+                          }}
+                          title="删除"
+                        >
+                          <Trash2 size={13} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div style={{ marginTop: 12 }}>
+                <div style={labelStyle}>导入自定义舞蹈</div>
+                <button
+                  disabled={importingDance}
+                  onClick={async () => {
+                    setImportingDance(true)
+                    try {
+                      // Pick VMD file
+                      const vmdPath = await invoke<string | null>('pick_dance_file')
+                      if (!vmdPath) { setImportingDance(false); return }
+
+                      // Import VMD
+                      const vmdRes = await fetch(`${OPENCLAW_URL}/plugins/claw-sama/dance/import`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ path: vmdPath }),
+                      })
+                      const vmdData = await vmdRes.json()
+                      if (!vmdData.ok) throw new Error(vmdData.error)
+
+                      // Ask for optional BGM
+                      const mp3Path = await invoke<string | null>('pick_music_file')
+                      if (mp3Path) {
+                        await fetch(`${OPENCLAW_URL}/plugins/claw-sama/dance/import`, {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ path: mp3Path }),
+                        })
+                      }
+
+                      fetchCustomDances()
+                    } catch (err) {
+                      console.warn('Import dance failed:', err)
+                    }
+                    setImportingDance(false)
+                  }}
+                  style={{ ...applyBtnStyle, width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
+                >
+                  {importingDance
+                    ? <Loader size={14} style={{ animation: 'spin 1s linear infinite' }} />
+                    : <Upload size={14} />}
+                  {importingDance ? '导入中…' : '选择 VMD 舞蹈文件…'}
+                </button>
+                <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', marginTop: 4 }}>
+                  选择 .vmd 舞蹈文件后，可选择配套 .mp3 音乐文件
+                </div>
               </div>
             </div>
           )}

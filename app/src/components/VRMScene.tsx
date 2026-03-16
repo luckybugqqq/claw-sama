@@ -2,14 +2,14 @@ import { useEffect, useRef, useImperativeHandle, forwardRef } from 'react'
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm'
-import { VRMAnimationLoaderPlugin, VRMLookAtQuaternionProxy, createVRMAnimationClip } from '@pixiv/three-vrm-animation'
+import { VRMLookAtQuaternionProxy } from '@pixiv/three-vrm-animation'
 import type { VRM } from '@pixiv/three-vrm'
-import type { VRMAnimation } from '@pixiv/three-vrm-animation'
 import { EmoteController } from '../emote'
 import { LipSync } from '../lip-sync'
+import { MotionController } from '../motion-controller'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 
-export type TouchRegion = 'head' | 'body' | 'hand' | 'leg'
+export type TouchRegion = 'head' | 'arm' | 'leg' | 'chest' | 'belly' | 'buttocks'
 
 interface VRMSceneProps {
   modelPath: string
@@ -29,6 +29,10 @@ export interface VRMSceneHandle {
   captureScreenshot: () => string | null
   panCamera: (dx: number, dy: number) => void
   rotateCamera: (dx: number, dy: number) => void
+  playDance: (nameOrPreset: string | import('../motion-controller').DancePreset) => void
+  stopDance: () => void
+  isDancing: () => boolean
+  setBgmVolume: (v: number) => void
 }
 
 // ── Blink state ───────────────────────────────────────────────────────────────
@@ -149,44 +153,6 @@ function applyRelaxedHandPose(cache: HandPoseCache, time: number) {
   }
 }
 
-// ── Re-anchor animation root position (from airi) ────────────────────────────
-// Adjusts the animation's position tracks so the idle loop aligns with the
-// model's actual rest position instead of floating or sliding.
-function reAnchorRootPositionTrack(clip: THREE.AnimationClip, vrm: VRM) {
-  const hipNode = vrm.humanoid?.getNormalizedBoneNode('hips')
-  if (!hipNode) return
-
-  hipNode.updateMatrixWorld(true)
-  const defaultHipPos = new THREE.Vector3()
-  hipNode.getWorldPosition(defaultHipPos)
-
-  const hipsTrack = clip.tracks.find(
-    (track) =>
-      track instanceof THREE.VectorKeyframeTrack &&
-      track.name === `${hipNode.name}.position`,
-  )
-  if (!(hipsTrack instanceof THREE.VectorKeyframeTrack)) return
-
-  const animeHipPos = new THREE.Vector3(
-    hipsTrack.values[0],
-    hipsTrack.values[1],
-    hipsTrack.values[2],
-  )
-  const animeDelta = new THREE.Vector3().subVectors(animeHipPos, defaultHipPos)
-
-  clip.tracks.forEach((track) => {
-    if (
-      track.name.endsWith('.position') &&
-      track instanceof THREE.VectorKeyframeTrack
-    ) {
-      for (let i = 0; i < track.values.length; i += 3) {
-        track.values[i] -= animeDelta.x
-        track.values[i + 1] -= animeDelta.y
-        track.values[i + 2] -= animeDelta.z
-      }
-    }
-  })
-}
 
 export const VRMScene = forwardRef<VRMSceneHandle, VRMSceneProps>(function VRMScene({
   modelPath,
@@ -198,7 +164,7 @@ export const VRMScene = forwardRef<VRMSceneHandle, VRMSceneProps>(function VRMSc
   const emoteRef = useRef<EmoteController | null>(null)
   const resetCameraRef = useRef<(() => void) | null>(null)
   const trackingModeRef = useRef<TrackingMode>('mouse')
-  const playActionRef = useRef<((name: string) => void) | null>(null)
+  const motionRef = useRef<MotionController | null>(null)
   const panCameraRef = useRef<((dx: number, dy: number) => void) | null>(null)
   const rotateCameraRef = useRef<((dx: number, dy: number) => void) | null>(null)
   const lipSyncRef = useRef<LipSync>(LipSync.getInstance())
@@ -220,8 +186,8 @@ export const VRMScene = forwardRef<VRMSceneHandle, VRMSceneProps>(function VRMSc
     setTrackingMode(mode: TrackingMode) {
       trackingModeRef.current = mode
     },
-    playAction(name: string) {
-      playActionRef.current?.(name)
+    playAction(name: string, hold?: boolean) {
+      motionRef.current?.playAction(name, hold)
     },
     captureScreenshot() {
       return canvasRef.current?.toDataURL('image/png') ?? null
@@ -231,6 +197,18 @@ export const VRMScene = forwardRef<VRMSceneHandle, VRMSceneProps>(function VRMSc
     },
     rotateCamera(dx: number, dy: number) {
       rotateCameraRef.current?.(dx, dy)
+    },
+    playDance(nameOrPreset: string | import('../motion-controller').DancePreset) {
+      motionRef.current?.playDance(nameOrPreset)
+    },
+    stopDance() {
+      motionRef.current?.stopDance()
+    },
+    isDancing() {
+      return motionRef.current?.isDancing ?? false
+    },
+    setBgmVolume(v: number) {
+      motionRef.current?.setVolume(v)
     },
   }))
 
@@ -286,16 +264,14 @@ export const VRMScene = forwardRef<VRMSceneHandle, VRMSceneProps>(function VRMSc
     fillLight.position.set(-2, 1, -1)
     scene.add(fillLight)
 
-    // ── Loader (supports both VRM and VRMA) ───────────────────────────────────
+    // ── Loader ───────────────────────────────────────────────────────────────
     const loader = new GLTFLoader()
     loader.register((parser) => new VRMLoaderPlugin(parser))
-    loader.register((parser) => new VRMAnimationLoaderPlugin(parser))
 
     // ── State ─────────────────────────────────────────────────────────────────
     let vrm: VRM | null = null
-    let mixer: THREE.AnimationMixer | null = null
+    let motion: MotionController | null = null
     let emote: EmoteController | null = null
-    let idleActionRef: THREE.AnimationAction | null = null
     let handPose: HandPoseCache | null = null
     const blinkState = createBlinkState()
     const saccades = new EyeSaccadeController()
@@ -384,24 +360,6 @@ export const VRMScene = forwardRef<VRMSceneHandle, VRMSceneProps>(function VRMSc
           updateCameraOrbit()
         }
 
-        // ── Load and play idle animation ──────────────────────────────────────
-        try {
-          const animGltf = await loader.loadAsync(idleAnimationPath)
-          const vrmAnimations = animGltf.userData.vrmAnimations as VRMAnimation[]
-          if (vrmAnimations && vrmAnimations.length > 0) {
-            const clip = createVRMAnimationClip(vrmAnimations[0], loadedVrm)
-            reAnchorRootPositionTrack(clip, loadedVrm)
-
-            mixer = new THREE.AnimationMixer(loadedVrm.scene)
-            const action = mixer.clipAction(clip)
-            action.play()
-            idleActionRef = action
-            console.log('Idle animation playing')
-          }
-        } catch (err) {
-          console.warn('Failed to load idle animation:', err)
-        }
-
         // Build hand pose cache (applied every frame in animate loop)
         handPose = buildHandPoseCache(loadedVrm)
 
@@ -409,84 +367,41 @@ export const VRMScene = forwardRef<VRMSceneHandle, VRMSceneProps>(function VRMSc
         emote = new EmoteController(loadedVrm)
         emoteRef.current = emote
 
-        // ── Load action animations ──────────────────────────────────────────────
-        const actionClips = new Map<string, THREE.AnimationClip>()
-        const actionNames = ['akimbo', 'playFingers', 'scratchHead', 'stretch']
+        // ── Initialize MotionController ──────────────────────────────────────
+        const mixer = new THREE.AnimationMixer(loadedVrm.scene)
+        motion = new MotionController(loadedVrm, mixer)
+        motionRef.current = motion
 
-        for (const name of actionNames) {
-          try {
-            const animGltf = await loader.loadAsync(`/${name}.vrma`)
-            const vrmAnims = animGltf.userData.vrmAnimations as VRMAnimation[]
-            if (vrmAnims?.length) {
-              const clip = createVRMAnimationClip(vrmAnims[0], loadedVrm)
-              reAnchorRootPositionTrack(clip, loadedVrm)
-              clip.name = name
-              actionClips.set(name, clip)
-            }
-          } catch (err) {
-            console.warn(`Failed to load action "${name}":`, err)
-          }
-        }
-        console.log(`Loaded ${actionClips.size} action animations`)
+        // Dance camera: auto-fit from hips position, centered on upper body
+        const danceRadius = (modelSize.y / 1.6) / Math.tan((FOV / 2 * Math.PI) / 180)
 
-        let actionPlaying = false
-        let heldAction: THREE.AnimationAction | null = null
-        let holdTimer: ReturnType<typeof setTimeout> | null = null
-
-        const releaseHeld = () => {
-          if (holdTimer) { clearTimeout(holdTimer); holdTimer = null }
-          if (heldAction) {
-            heldAction.stop()
-            heldAction = null
-            if (idleActionRef) idleActionRef.reset().play()
-            actionPlaying = false
-          }
-        }
-
-        playActionRef.current = (name: string, hold?: boolean) => {
-          if (!mixer) return
-
-          // Release any held action first
-          releaseHeld()
-
-          if (actionPlaying) return
-          const clip = actionClips.get(name)
-          if (!clip) return
-
-          actionPlaying = true
-          const action = mixer.clipAction(clip)
-          action.reset()
-          action.setLoop(THREE.LoopOnce, 1)
-          action.clampWhenFinished = !!hold
-
-          if (hold) {
-            // For hold: stop idle completely so it can't override the clamped pose
-            if (idleActionRef) idleActionRef.stop()
-            action.play()
+        motion.onDanceStart = () => {
+          const hipsNode = loadedVrm.humanoid?.getNormalizedBoneNode('hips')
+          if (hipsNode) {
+            const hipsWorld = new THREE.Vector3()
+            hipsNode.getWorldPosition(hipsWorld)
+            // Pivot at hips height (upper body center)
+            pivot.set(hipsWorld.x, hipsWorld.y, hipsWorld.z)
           } else {
-            // Crossfade from idle
-            if (idleActionRef) {
-              action.crossFadeFrom(idleActionRef, 0.3, true)
-            }
-            action.play()
+            pivot.copy(modelCenter)
           }
-
-          const onFinished = () => {
-            mixer!.removeEventListener('finished', onFinished)
-            if (hold) {
-              heldAction = action
-              // 10s 后自动 release 回 idle
-              holdTimer = setTimeout(releaseHeld, 10000)
-            } else {
-              action.stop()
-              if (idleActionRef) {
-                idleActionRef.reset().play()
-              }
-              actionPlaying = false
-            }
-          }
-          mixer.addEventListener('finished', onFinished)
+          orbitRadius = danceRadius
+          orbitTheta = 0
+          orbitPhi = Math.PI / 2
+          updateCameraOrbit()
         }
+        motion.onDanceStop = () => {
+          pivot.copy(initPivot)
+          orbitRadius = initRadius
+          orbitTheta = initTheta
+          orbitPhi = initPhi
+          updateCameraOrbit()
+        }
+
+        // Load idle animation (non-blocking for fast startup)
+        motion.loadIdle(idleAnimationPath).catch((err) =>
+          console.warn('Failed to load idle animation:', err),
+        )
 
         // Reset spring bones after everything is set up
         loadedVrm.springBoneManager?.reset()
@@ -574,10 +489,28 @@ export const VRMScene = forwardRef<VRMSceneHandle, VRMSceneProps>(function VRMSc
     let lastTapRegion: TouchRegion | null = null
     let lastTouchFireTime = 0
     const DOUBLE_TAP_WINDOW = 500 // ms
-    const TOUCH_COOLDOWN = 30_000 // ms
+    const TOUCH_COOLDOWN = 5_000 // ms
+
+    // Bone-to-region mapping for proximity-based touch detection
+    const boneRegionMap: [string, TouchRegion][] = [
+      // Head
+      ['head', 'head'], ['neck', 'head'],
+      ['leftEye', 'head'], ['rightEye', 'head'], ['jaw', 'head'],
+      // Arms
+      ['leftShoulder', 'arm'], ['leftUpperArm', 'arm'], ['leftLowerArm', 'arm'], ['leftHand', 'arm'],
+      ['rightShoulder', 'arm'], ['rightUpperArm', 'arm'], ['rightLowerArm', 'arm'], ['rightHand', 'arm'],
+      // Legs
+      ['leftUpperLeg', 'leg'], ['leftLowerLeg', 'leg'], ['leftFoot', 'leg'], ['leftToes', 'leg'],
+      ['rightUpperLeg', 'leg'], ['rightLowerLeg', 'leg'], ['rightFoot', 'leg'], ['rightToes', 'leg'],
+      // Torso
+      ['chest', 'chest'], ['upperChest', 'chest'],
+      ['spine', 'belly'],
+      ['hips', 'buttocks'],
+    ]
+    const _bonePos = new THREE.Vector3()
 
     function detectTouchRegion(e: PointerEvent): TouchRegion | null {
-      if (!vrm) return null
+      if (!vrm?.humanoid) return null
 
       touchMouseVec.set(
         (e.clientX / window.innerWidth) * 2 - 1,
@@ -590,32 +523,22 @@ export const VRMScene = forwardRef<VRMSceneHandle, VRMSceneProps>(function VRMSc
 
       const hitPoint = intersects[0].point
 
-      // Determine region by comparing hit Y to model bounding box
-      const box = new THREE.Box3().setFromObject(vrm.scene)
-      const minY = box.min.y
-      const height = box.max.y - minY
-      if (height <= 0) return 'body'
+      // Find closest bone to hit point
+      let closestRegion: TouchRegion = 'belly'
+      let closestDist = Infinity
 
-      const ratio = (hitPoint.y - minY) / height
-
-      // Refine with head bone position if available
-      const headBone = vrm.humanoid?.getNormalizedBoneNode('head')
-      if (headBone) {
-        const headPos = new THREE.Vector3()
-        headBone.getWorldPosition(headPos)
-        const headRatio = (headPos.y - minY) / height
-        if (ratio >= headRatio - 0.02) return 'head'
+      for (const [boneName, region] of boneRegionMap) {
+        const bone = vrm.humanoid.getNormalizedBoneNode(boneName as any)
+        if (!bone) continue
+        bone.getWorldPosition(_bonePos)
+        const dist = hitPoint.distanceToSquared(_bonePos)
+        if (dist < closestDist) {
+          closestDist = dist
+          closestRegion = region
+        }
       }
 
-      // Check if hit is near hands (X offset from center)
-      const centerX = (box.min.x + box.max.x) / 2
-      const width = box.max.x - box.min.x
-      const xOffset = Math.abs(hitPoint.x - centerX) / (width || 1)
-      if (ratio > 0.35 && ratio < 0.75 && xOffset > 0.35) return 'hand'
-
-      if (ratio >= 0.75) return 'head'
-      if (ratio >= 0.35) return 'body'
-      return 'leg'
+      return closestRegion
     }
 
     // ── Left-click: distinguish click (touch) vs drag (move window) ────
@@ -754,11 +677,11 @@ export const VRMScene = forwardRef<VRMSceneHandle, VRMSceneProps>(function VRMSc
       const delta = clock.getDelta()
 
       if (vrm) {
-        // 1. Animation mixer (body pose from idle_loop.vrma)
-        mixer?.update(delta)
+        // 1. Animation mixer
+        motion?.update(delta)
 
-        // 1.5. Relaxed hand pose — must run after mixer to override stiff rest pose
-        if (handPose) applyRelaxedHandPose(handPose, clock.elapsedTime)
+        // 1.5. Relaxed hand pose — skip during dance (VMD has own hand anim)
+        if (handPose && !motion?.isDancing) applyRelaxedHandPose(handPose, clock.elapsedTime)
 
         // 2. Humanoid update
         vrm.humanoid?.update()
@@ -840,9 +763,10 @@ export const VRMScene = forwardRef<VRMSceneHandle, VRMSceneProps>(function VRMSc
       canvas.removeEventListener('pointerup', onPointerUp)
       canvas.removeEventListener('contextmenu', onContextMenu)
       window.removeEventListener('resize', onResize)
-      mixer?.stopAllAction()
       emote?.dispose()
       emoteRef.current = null
+      motion?.dispose()
+      motionRef.current = null
       hitTarget.dispose()
       delete (window as any).__clawHitTest
       renderer.dispose()

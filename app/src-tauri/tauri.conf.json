@@ -11,6 +11,9 @@
   "app": {
     "withGlobalTauri": false,
     "macOSPrivateApi": true,
+    "security": {
+      "csp": "default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; connect-src 'self' https: http:; img-src 'self' data: blob: https:; media-src 'self' https:"
+    },
     "windows": [
       {
         "title": "Claw Sama",

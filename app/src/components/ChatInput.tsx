@@ -470,7 +470,7 @@ export function ChatInput({ visible = true, onActiveChange, uiAlign = 'right', o
 
   if (!open) {
     return (
-      <div style={{ position: 'absolute', bottom: 24, ...(uiAlign === 'left' ? { left: 12 } : { right: 12 }), zIndex: 300, pointerEvents: 'auto', display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'center' }}>
+      <div style={{ position: 'absolute', bottom: 8, ...(uiAlign === 'left' ? { left: 12 } : { right: 12 }), zIndex: 300, pointerEvents: 'auto', display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'center' }}>
         <button
           onClick={startVoiceCall}
           style={fabStyle}
@@ -646,7 +646,7 @@ const fabStyle: React.CSSProperties = {
 
 const barStyle: React.CSSProperties = {
   position: 'absolute',
-  bottom: 24,
+  bottom: 16,
   left: 12,
   right: 12,
   display: 'flex',

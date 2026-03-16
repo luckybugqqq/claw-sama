@@ -180,7 +180,7 @@ class StreamingTtsTracker {
 async function generateTtsUrl(text: string, log?: { warn: (msg: string) => void }): Promise<string | undefined> {
   const prefs = getPrefs();
   const ttsText = stripMarkdown(stripEmoji(text));
-  if (!ttsText) return undefined;
+  if (!ttsText || /^[。！？；.!?;、，,…\s]+$/.test(ttsText)) return undefined;
 
   const provider = (prefs.provider === "qwen" && prefs.qwenKey) ? "qwen" : "edge";
   console.log(`[claw-sama] TTS request: provider=${provider} text="${ttsText.slice(0, 60)}${ttsText.length > 60 ? "..." : ""}"`);
@@ -200,7 +200,6 @@ async function generateTtsUrl(text: string, log?: { warn: (msg: string) => void 
     }
     if (result.success && result.audioPath) {
       const audioId = registerAudioFile(result.audioPath);
-      console.log(`[claw-sama] TTS success: provider=${provider} audioId=${audioId}`);
       return `${GATEWAY_URL}/plugins/claw-sama/audio/${audioId}`;
     }
     log?.warn("claw-sama TTS failed: " + (result.error || "unknown error"));
@@ -555,8 +554,7 @@ export function createClawSamaPlugin() {
           const prompt = body.prompt as string;
           if (!region || !prompt) { jsonResponse(res, 400, { error: "region and prompt required" }); return; }
 
-          // Broadcast a thinking state
-          broadcastToVrm({ emotion: "happy", emotionIntensity: 0.6 });
+          // Touch reaction is handled by frontend, don't override with a thinking emotion
 
           try {
             const currentCfg = await getClawSamaRuntime().config.loadConfig();
@@ -707,6 +705,8 @@ export function createClawSamaPlugin() {
               uiAlign: prefs.uiAlign,
               screenObserve: prefs.screenObserve,
               screenObserveInterval: prefs.screenObserveInterval,
+              currentDance: prefs.currentDance,
+              customDancePreset: prefs.customDancePreset,
             });
             return;
           }
@@ -722,6 +722,8 @@ export function createClawSamaPlugin() {
             if (body.uiAlign !== undefined) patch.uiAlign = body.uiAlign;
             if (body.screenObserve !== undefined) patch.screenObserve = body.screenObserve;
             if (body.screenObserveInterval !== undefined) patch.screenObserveInterval = body.screenObserveInterval;
+            if (body.currentDance !== undefined) patch.currentDance = body.currentDance;
+            if (body.customDancePreset !== undefined) patch.customDancePreset = body.customDancePreset;
             setPrefs(updatePrefs(patch));
             jsonResponse(res, 200, { ok: true });
             return;
@@ -1026,6 +1028,109 @@ export function createClawSamaPlugin() {
             copyFileSync(srcPath, dest);
             const url = `${GATEWAY_URL}/plugins/claw-sama/model/serve/${safeName}`;
             jsonResponse(res, 200, { ok: true, url });
+          } catch (err) {
+            jsonResponse(res, 500, { error: String(err) });
+          }
+        });
+
+        // ── Dance list/serve/import ──
+        const customDancesDir = path.join(workspaceRoot, "dances");
+
+        registerRoute("/plugins/claw-sama/dance/list", async (req, res) => {
+          if (handleCors(req, res, "GET, OPTIONS")) return;
+          if (req.method !== "GET") { res.writeHead(405); res.end(); return; }
+          try {
+            const dances: { id: string; label: string; vmdUrl: string; bgmUrl?: string }[] = [];
+            if (existsSync(customDancesDir)) {
+              const files = readdirSync(customDancesDir);
+              const vmds = files.filter((f: string) => f.toLowerCase().endsWith(".vmd"));
+              for (const vmd of vmds) {
+                const id = vmd.replace(/\.vmd$/i, "");
+                const label = decodeURIComponent(id);
+                const vmdUrl = `${GATEWAY_URL}/plugins/claw-sama/dance/serve/${vmd}`;
+                // Check for matching mp3
+                const mp3Name = files.find((f: string) =>
+                  f.toLowerCase() === `${id.toLowerCase()}.mp3`
+                );
+                const bgmUrl = mp3Name
+                  ? `${GATEWAY_URL}/plugins/claw-sama/dance/serve/${mp3Name}`
+                  : undefined;
+                dances.push({ id, label, vmdUrl, bgmUrl });
+              }
+            }
+            jsonResponse(res, 200, { dances });
+          } catch {
+            jsonResponse(res, 200, { dances: [] });
+          }
+        });
+
+        registerRoute("/plugins/claw-sama/dance/serve", (req, res) => {
+          if (req.method !== "GET") { res.writeHead(405); res.end(); return; }
+          const url = req.url ?? "";
+          const fileName = decodeURIComponent(url.split("/plugins/claw-sama/dance/serve/")[1]?.split("?")[0] ?? "");
+          if (!fileName || fileName.includes("..") || fileName.includes("/") || fileName.includes("\\")) {
+            jsonResponse(res, 400, { error: "invalid file name" });
+            return;
+          }
+          const filePath = path.join(customDancesDir, fileName);
+          if (!existsSync(filePath)) { jsonResponse(res, 404, { error: "not found" }); return; }
+          try {
+            const data = readFileSync(filePath);
+            const ext = path.extname(fileName).toLowerCase();
+            const mime = ext === ".mp3" ? "audio/mpeg"
+              : ext === ".wav" ? "audio/wav"
+              : ext === ".ogg" ? "audio/ogg"
+              : "application/octet-stream";
+            res.writeHead(200, {
+              "Content-Type": mime,
+              "Content-Length": data.length,
+              "Access-Control-Allow-Origin": "*",
+              "Cache-Control": "public, max-age=3600",
+            });
+            res.end(data);
+          } catch {
+            jsonResponse(res, 500, { error: "read error" });
+          }
+        }, { match: "prefix" });
+
+        registerRoute("/plugins/claw-sama/dance/import", async (req, res) => {
+          if (handleCors(req, res, "POST, OPTIONS")) return;
+          if (req.method !== "POST") { res.writeHead(405); res.end(); return; }
+          const body = await readJsonBody(req);
+          const srcPath = body.path as string | undefined;
+          if (!srcPath || !path.isAbsolute(srcPath) || !existsSync(srcPath)) {
+            jsonResponse(res, 400, { error: "file not found" });
+            return;
+          }
+          try {
+            mkdirSync(customDancesDir, { recursive: true });
+            const safeName = path.basename(srcPath).replace(/[^a-zA-Z0-9._-]/g, "_");
+            const dest = path.join(customDancesDir, safeName);
+            const { copyFileSync } = await import("node:fs");
+            copyFileSync(srcPath, dest);
+            const url = `${GATEWAY_URL}/plugins/claw-sama/dance/serve/${safeName}`;
+            jsonResponse(res, 200, { ok: true, url, fileName: safeName });
+          } catch (err) {
+            jsonResponse(res, 500, { error: String(err) });
+          }
+        });
+
+        registerRoute("/plugins/claw-sama/dance/delete", async (req, res) => {
+          if (handleCors(req, res, "POST, OPTIONS")) return;
+          if (req.method !== "POST") { res.writeHead(405); res.end(); return; }
+          const body = await readJsonBody(req);
+          const id = body.id as string | undefined;
+          if (!id || id.includes("..") || id.includes("/") || id.includes("\\")) {
+            jsonResponse(res, 400, { error: "invalid id" });
+            return;
+          }
+          try {
+            const { unlinkSync } = await import("node:fs");
+            const vmdPath = path.join(customDancesDir, `${id}.vmd`);
+            const mp3Path = path.join(customDancesDir, `${id}.mp3`);
+            if (existsSync(vmdPath)) unlinkSync(vmdPath);
+            if (existsSync(mp3Path)) unlinkSync(mp3Path);
+            jsonResponse(res, 200, { ok: true });
           } catch (err) {
             jsonResponse(res, 500, { error: String(err) });
           }

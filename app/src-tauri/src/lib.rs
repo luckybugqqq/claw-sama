@@ -30,6 +30,24 @@ async fn pick_vrm_file() -> Result<Option<String>, String> {
 }
 
 #[tauri::command]
+async fn pick_dance_file() -> Result<Option<String>, String> {
+    let file = rfd::AsyncFileDialog::new()
+        .add_filter("VMD Motion", &["vmd"])
+        .pick_file()
+        .await;
+    Ok(file.map(|f| f.path().to_string_lossy().to_string()))
+}
+
+#[tauri::command]
+async fn pick_music_file() -> Result<Option<String>, String> {
+    let file = rfd::AsyncFileDialog::new()
+        .add_filter("Music", &["mp3", "wav", "ogg"])
+        .pick_file()
+        .await;
+    Ok(file.map(|f| f.path().to_string_lossy().to_string()))
+}
+
+#[tauri::command]
 async fn start_cursor_monitor(window: tauri::Window) -> Result<(), String> {
     if MONITORING.load(Ordering::Relaxed) {
         return Ok(());
@@ -213,6 +231,8 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .invoke_handler(tauri::generate_handler![
             pick_vrm_file,
+            pick_dance_file,
+            pick_music_file,
             start_cursor_monitor,
             stop_cursor_monitor,
             start_speech_recognition,
