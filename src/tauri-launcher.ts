@@ -67,15 +67,10 @@ function resolveBuiltBinary(appDir: string): string | null {
 }
 
 export function launchTauri(appDir: string, log: { info: (msg: string) => void; warn: (msg: string) => void }) {
-  if (!existsSync(appDir)) {
-    log.warn(`Claw Sama app directory not found: ${appDir}`);
-    return;
-  }
-
   const binPath = resolveBuiltBinary(appDir);
   if (binPath) {
     log.info(`Launching Claw Sama: ${binPath}`);
-    tauriProcess = spawn(binPath, [], { cwd: appDir, stdio: "ignore" });
+    tauriProcess = spawn(binPath, [], { cwd: path.dirname(binPath), stdio: "ignore" });
     tauriProcess.on("error", (err) => {
       log.warn(`Claw Sama process error: ${err.message}`);
       tauriProcess = null;
@@ -84,6 +79,11 @@ export function launchTauri(appDir: string, log: { info: (msg: string) => void; 
       log.info(`Claw Sama process exited (code: ${code})`);
       tauriProcess = null;
     });
+    return;
+  }
+
+  if (!existsSync(appDir)) {
+    log.warn(`Claw Sama: no pre-built binary and app directory not found: ${appDir}`);
     return;
   }
 
