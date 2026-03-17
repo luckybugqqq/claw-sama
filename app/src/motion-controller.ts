@@ -42,7 +42,7 @@ export const actionPresets: Record<string, MotionPreset> = {
   excited:      { label: '兴奋',     type: 'fbx', url: 'https://r2.vidol.chat/animations/c9c9941c-b96c-11e4-a802-0aaa78deedf9.fbx' },
   shy:          { label: '害羞',     type: 'fbx', url: 'https://r2.vidol.chat/animations/c9ccf37e-b96c-11e4-a802-0aaa78deedf9.fbx' },
   point:        { label: '指点',     type: 'fbx', url: 'https://r2.vidol.chat/animations/c9c916ce-b96c-11e4-a802-0aaa78deedf9.fbx' },
-  bow:          { label: '鞠躬',     type: 'fbx', url: 'https://r2.vidol.chat/animations/c9c78c0d-b96c-11e4-a802-0aaa78deedf9.fbx' },
+  lookAway:     { label: '叹气',     type: 'fbx', url: 'https://r2.vidol.chat/animations/c9c91624-b96c-11e4-a802-0aaa78deedf9.fbx' },
   salute:       { label: '敬礼',     type: 'fbx', url: 'https://r2.vidol.chat/animations/c9c91ba2-b96c-11e4-a802-0aaa78deedf9.fbx' },
   handGesture:  { label: '手势',     type: 'fbx', url: 'https://r2.vidol.chat/animations/c9c91ba2-b96c-11e4-a802-0aaa78deedf9.fbx' },
   angryPump:    { label: '暴怒',     type: 'fbx', url: 'https://r2.vidol.chat/animations/c9c915fd-b96c-11e4-a802-0aaa78deedf9.fbx' },
