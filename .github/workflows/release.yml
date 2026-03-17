@@ -34,6 +34,9 @@ jobs:
         with:
           node-version: 22
 
+      - name: Install pnpm
+        run: npm install -g pnpm
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -41,11 +44,11 @@ jobs:
 
       - name: Install frontend dependencies
         working-directory: app
-        run: npm install
+        run: pnpm install
 
       - name: Build Tauri app
         working-directory: app
-        run: npx tauri build --target ${{ matrix.target }}
+        run: pnpm tauri build --target ${{ matrix.target }}
 
       - name: Upload artifacts (Windows)
         if: matrix.platform == 'windows-latest'
