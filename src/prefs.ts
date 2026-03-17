@@ -19,6 +19,7 @@ export interface ClawSamaPrefs {
   uiAlign?: "left" | "right";
   screenObserve?: boolean;
   screenObserveInterval?: number;
+  language?: "zh" | "en";
   currentDance?: string;
   customDancePreset?: {
     label: string;

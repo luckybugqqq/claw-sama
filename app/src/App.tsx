@@ -73,6 +73,7 @@ export default function App() {
   const [customDancePreset, setCustomDancePreset] = useState<import('./motion-controller').DancePreset | undefined>(undefined)
   const [screenObserve, setScreenObserve] = useState(false)
   const [screenObserveInterval, setScreenObserveInterval] = useState(60)
+  const [language, setLanguage] = useState<'zh' | 'en'>('zh')
   usePassThrough(!settingsOpen && !historyOpen)
 
   // Load persisted settings on mount
@@ -91,6 +92,7 @@ export default function App() {
         if (s.screenObserveInterval !== undefined) setScreenObserveInterval(s.screenObserveInterval)
         if (s.currentDance) setCurrentDance(s.currentDance)
         if (s.customDancePreset) setCustomDancePreset(s.customDancePreset)
+        if (s.language) setLanguage(s.language)
       })
       .catch(() => {})
   }, [])
@@ -351,6 +353,8 @@ export default function App() {
         screenObserveInterval={screenObserveInterval}
         onScreenObserveIntervalChange={(v) => { setScreenObserveInterval(v); saveSettings({ screenObserveInterval: v }) }}
         captureVrmScreenshot={() => sceneRef.current?.captureScreenshot() ?? null}
+        language={language}
+        onLanguageChange={(v) => { setLanguage(v); saveSettings({ language: v }) }}
         currentDance={currentDance}
         onDanceChange={(id, preset) => {
           setCurrentDance(id)

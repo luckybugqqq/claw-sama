@@ -722,6 +722,7 @@ export function createClawSamaPlugin() {
               screenObserveInterval: prefs.screenObserveInterval,
               currentDance: prefs.currentDance,
               customDancePreset: prefs.customDancePreset,
+              language: prefs.language ?? "zh",
             });
             return;
           }
@@ -739,6 +740,7 @@ export function createClawSamaPlugin() {
             if (body.screenObserveInterval !== undefined) patch.screenObserveInterval = body.screenObserveInterval;
             if (body.currentDance !== undefined) patch.currentDance = body.currentDance;
             if (body.customDancePreset !== undefined) patch.customDancePreset = body.customDancePreset;
+            if (body.language !== undefined) patch.language = body.language;
             setPrefs(updatePrefs(patch));
             jsonResponse(res, 200, { ok: true });
             return;

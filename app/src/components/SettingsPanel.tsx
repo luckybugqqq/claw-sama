@@ -35,6 +35,8 @@ interface SettingsPanelProps {
   onScreenObserveIntervalChange: (v: number) => void
   /** Return a data URL screenshot of the current VRM canvas */
   captureVrmScreenshot?: () => string | null
+  language: 'zh' | 'en'
+  onLanguageChange: (v: 'zh' | 'en') => void
   currentDance: string
   onDanceChange: (id: string, preset?: DancePreset) => void
 }
@@ -100,8 +102,11 @@ export function SettingsPanel({
   screenObserve, onScreenObserveChange,
   screenObserveInterval, onScreenObserveIntervalChange,
   captureVrmScreenshot,
+  language, onLanguageChange,
   currentDance, onDanceChange,
 }: SettingsPanelProps) {
+  const t = (zh: string, en: string) => language === 'en' ? en : zh
+
   const [tab, setTab] = useState<Tab>('general')
   const [models, setModels] = useState<string[]>([])
   const [soulContent, setSoulContent] = useState('')
@@ -316,7 +321,7 @@ export function SettingsPanel({
     <div style={overlayStyle} data-no-passthrough onClick={onClose}>
       <div style={{ ...panelStyle, transform: `translate(${panelPos.x}px, ${panelPos.y}px)` }} data-no-passthrough onClick={(e) => e.stopPropagation()}>
         <div style={headerStyle} onMouseDown={onDragStart}>
-          <span style={{ fontSize: 16, fontWeight: 600, cursor: 'grab' }}>设置</span>
+          <span style={{ fontSize: 16, fontWeight: 600, cursor: 'grab' }}>{t('设置', 'Settings')}</span>
           <button onClick={onClose} style={closeBtnStyle}>
             <X size={16} />
           </button>
@@ -324,13 +329,13 @@ export function SettingsPanel({
 
         {/* Tabs */}
         <div style={tabBarStyle}>
-          {(['general', 'voice', 'model', 'persona', 'dance'] as const).map((t) => (
+          {(['general', 'voice', 'model', 'persona', 'dance'] as const).map((tb) => (
             <button
-              key={t}
-              onClick={() => setTab(t)}
-              style={{ ...tabStyle, ...(tab === t ? activeTabStyle : {}) }}
+              key={tb}
+              onClick={() => setTab(tb)}
+              style={{ ...tabStyle, ...(tab === tb ? activeTabStyle : {}) }}
             >
-              {{ general: '常规', voice: '语音', model: '形象', persona: '人设', dance: '舞蹈' }[t]}
+              {{ general: t('常规', 'General'), voice: t('语音', 'Voice'), model: t('形象', 'Model'), persona: t('人设', 'Persona'), dance: t('舞蹈', 'Dance') }[tb]}
             </button>
           ))}
         </div>
@@ -339,10 +344,28 @@ export function SettingsPanel({
         <div style={contentStyle}>
           {tab === 'general' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              <ToggleRow label="显示字幕" value={showText} onChange={onShowTextChange} />
-              <ToggleRow label="语音播报" value={ttsEnabled} onChange={onTtsEnabledChange} />
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: 14 }}>音量</span>
+                <span style={{ fontSize: 14 }}>{t('语言', 'Language')}</span>
+                <div style={{ display: 'flex', gap: 4 }}>
+                  {(['zh', 'en'] as const).map((l) => (
+                    <button
+                      key={l}
+                      onClick={() => onLanguageChange(l)}
+                      style={{
+                        ...smallBtnStyle,
+                        background: language === l ? 'rgba(100, 160, 255, 0.4)' : 'rgba(255, 255, 255, 0.08)',
+                        borderColor: language === l ? 'rgba(100, 160, 255, 0.6)' : 'rgba(255, 255, 255, 0.15)',
+                      }}
+                    >
+                      {l === 'zh' ? '中文' : 'English'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <ToggleRow label={t('显示字幕', 'Subtitles')} value={showText} onChange={onShowTextChange} />
+              <ToggleRow label={t('语音播报', 'TTS')} value={ttsEnabled} onChange={onTtsEnabledChange} />
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: 14 }}>{t('音量', 'Volume')}</span>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <input
                     type="range"
@@ -356,7 +379,7 @@ export function SettingsPanel({
                 </div>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: 14 }}>视线跟随</span>
+                <span style={{ fontSize: 14 }}>{t('视线跟随', 'Eye Tracking')}</span>
                 <div style={{ display: 'flex', gap: 4 }}>
                   {(['mouse', 'camera'] as const).map((m) => (
                     <button
@@ -368,13 +391,13 @@ export function SettingsPanel({
                         borderColor: tracking === m ? 'rgba(100, 160, 255, 0.6)' : 'rgba(255, 255, 255, 0.15)',
                       }}
                     >
-                      {m === 'mouse' ? '鼠标' : '镜头'}
+                      {m === 'mouse' ? t('鼠标', 'Mouse') : t('镜头', 'Camera')}
                     </button>
                   ))}
                 </div>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: 14 }}>UI位置</span>
+                <span style={{ fontSize: 14 }}>{t('UI位置', 'UI Position')}</span>
                 <div style={{ display: 'flex', gap: 4 }}>
                   {(['left', 'right'] as const).map((a) => (
                     <button
@@ -386,17 +409,17 @@ export function SettingsPanel({
                         borderColor: uiAlign === a ? 'rgba(100, 160, 255, 0.6)' : 'rgba(255, 255, 255, 0.15)',
                       }}
                     >
-                      {a === 'left' ? '靠左' : '靠右'}
+                      {a === 'left' ? t('靠左', 'Left') : t('靠右', 'Right')}
                     </button>
                   ))}
                 </div>
               </div>
-              <ToggleRow label="隐藏UI" value={hideUI} onChange={onHideUIChange} />
-              <ToggleRow label="屏幕观察" value={screenObserve} onChange={onScreenObserveChange} />
+              <ToggleRow label={t('隐藏UI', 'Hide UI')} value={hideUI} onChange={onHideUIChange} />
+              <ToggleRow label={t('屏幕观察', 'Screen Observe')} value={screenObserve} onChange={onScreenObserveChange} />
               {screenObserve && (
                 <>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: -8 }}>
-                    <span style={{ fontSize: 14 }}>观察间隔</span>
+                    <span style={{ fontSize: 14 }}>{t('观察间隔', 'Interval')}</span>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       <input
                         type="range"
@@ -417,7 +440,7 @@ export function SettingsPanel({
 
           {tab === 'voice' && (
             <div style={sectionStyle}>
-              <div style={labelStyle}>TTS 服务</div>
+              <div style={labelStyle}>{t('TTS 服务', 'TTS Provider')}</div>
               <div style={{ display: 'flex', gap: 4 }}>
                 {(['edge', 'qwen'] as const).map((p) => (
                   <button
@@ -441,7 +464,7 @@ export function SettingsPanel({
               {currentProvider === 'qwen' && (
                 <div style={{ marginTop: 4, display: 'flex', flexDirection: 'column', gap: 8 }}>
                   <div>
-                    <div style={labelStyle}>阿里云 API Key</div>
+                    <div style={labelStyle}>{t('阿里云 API Key', 'Alibaba Cloud API Key')}</div>
                     <input
                       type="text"
                       value={qwenKey}
@@ -452,11 +475,11 @@ export function SettingsPanel({
                       style={{ ...inputStyle, width: '100%' }}
                     />
                     <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', marginTop: 4 }}>
-                      从阿里云百炼控制台获取 API Key
+                      {t('从阿里云百炼控制台获取 API Key', 'Get API Key from Alibaba Cloud console')}
                     </div>
                   </div>
                   <div>
-                    <div style={labelStyle}>语音模型</div>
+                    <div style={labelStyle}>{t('语音模型', 'Voice Model')}</div>
                     <select
                       value={qwenModel}
                       onChange={(e) => { setQwenModel(e.target.value); saveQwenModel(e.target.value) }}
@@ -471,7 +494,7 @@ export function SettingsPanel({
               )}
 
               <div style={{ marginTop: 8 }}>
-                <div style={labelStyle}>{currentProvider === 'qwen' ? '千问语音' : 'Edge TTS 语音'}</div>
+                <div style={labelStyle}>{currentProvider === 'qwen' ? t('千问语音', 'Qwen Voice') : t('Edge TTS 语音', 'Edge TTS Voice')}</div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 200, overflowY: 'auto' }}>
                   {voices.map((v) => (
                     <div
@@ -520,7 +543,7 @@ export function SettingsPanel({
 
           {tab === 'model' && (
             <div style={sectionStyle}>
-              <div style={labelStyle}>内置VRM模型</div>
+              <div style={labelStyle}>{t('内置VRM模型', 'Built-in VRM Models')}</div>
               <select
                 value={BUILTIN_MODELS.includes(currentModel) ? currentModel : ''}
                 onChange={(e) => { onModelChange(e.target.value); saveModelPath(e.target.value) }}
@@ -534,7 +557,7 @@ export function SettingsPanel({
 
               {models.length > 0 && (
                 <div style={{ marginTop: 12 }}>
-                  <div style={labelStyle}>自定义VRM模型</div>
+                  <div style={labelStyle}>{t('自定义VRM模型', 'Custom VRM Models')}</div>
                   <select
                     value={!BUILTIN_MODELS.includes(currentModel) ? currentModel : ''}
                     onChange={(e) => { onModelChange(e.target.value); saveModelPath(e.target.value) }}
@@ -549,7 +572,7 @@ export function SettingsPanel({
               )}
 
               <div style={{ marginTop: 12 }}>
-                <div style={labelStyle}>导入自定义模型</div>
+                <div style={labelStyle}>{t('导入自定义模型', 'Import Custom Model')}</div>
                 <button
                   onClick={async () => {
                     const filePath = await invoke<string | null>('pick_vrm_file')
@@ -575,10 +598,10 @@ export function SettingsPanel({
                   }}
                   style={{ ...applyBtnStyle, width: '100%' }}
                 >
-                  浏览本地文件…
+                  {t('浏览本地文件…', 'Browse local files…')}
                 </button>
                 <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', marginTop: 4 }}>
-                  选择本地 .vrm 文件，将保存到工作区 models 目录
+                  {t('选择本地 .vrm 文件，将保存到工作区 models 目录', 'Select a .vrm file to save to workspace models directory')}
                 </div>
               </div>
             </div>
@@ -590,7 +613,7 @@ export function SettingsPanel({
               <textarea
                 value={identityContent}
                 onChange={(e) => { setIdentityContent(e.target.value); setPersonaDirty(true) }}
-                placeholder="角色身份信息（名字、种族、性格、emoji 等）…"
+                placeholder={t('角色身份信息（名字、种族、性格、emoji 等）…', 'Character identity (name, race, personality, emoji, etc.)…')}
                 style={textareaStyle}
                 rows={4}
               />
@@ -599,7 +622,7 @@ export function SettingsPanel({
               <textarea
                 value={soulContent}
                 onChange={(e) => { setSoulContent(e.target.value); setPersonaDirty(true) }}
-                placeholder="角色灵魂设定（说话风格、行为准则、背景故事等）…"
+                placeholder={t('角色灵魂设定（说话风格、行为准则、背景故事等）…', 'Character soul (speaking style, behavior, backstory, etc.)…')}
                 style={textareaStyle}
                 rows={6}
               />
@@ -622,7 +645,7 @@ export function SettingsPanel({
                   {generating
                     ? <Loader size={14} style={{ animation: 'spin 1s linear infinite' }} />
                     : <Sparkles size={14} />}
-                  {generating ? '生成中…' : '一键生成人设'}
+                  {generating ? t('生成中…', 'Generating…') : t('一键生成人设', 'Auto Generate')}
                 </button>
                 <button
                   onClick={savePersona}
@@ -632,18 +655,18 @@ export function SettingsPanel({
                     opacity: personaDirty ? 1 : 0.4,
                   }}
                 >
-                  {personaSaving ? '保存中…' : '保存'}
+                  {personaSaving ? t('保存中…', 'Saving…') : t('保存', 'Save')}
                 </button>
               </div>
               <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', marginTop: 4 }}>
-                关联工作区根目录的 IDENTITY.md 和 SOUL.md
+                {t('关联工作区根目录的 IDENTITY.md 和 SOUL.md', 'Linked to IDENTITY.md and SOUL.md in workspace root')}
               </div>
             </div>
           )}
 
           {tab === 'dance' && (
             <div style={sectionStyle}>
-              <div style={labelStyle}>内置舞蹈</div>
+              <div style={labelStyle}>{t('内置舞蹈', 'Built-in Dances')}</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                 {Object.entries(dancePresets).map(([id, preset]) => (
                   <div
@@ -665,7 +688,7 @@ export function SettingsPanel({
                       <span>{preset.label}</span>
                     </div>
                     {preset.bgm && (
-                      <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)' }}>含BGM</span>
+                      <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)' }}>{t('含BGM', 'w/ BGM')}</span>
                     )}
                   </div>
                 ))}
@@ -673,7 +696,7 @@ export function SettingsPanel({
 
               {customDances.length > 0 && (
                 <div style={{ marginTop: 12 }}>
-                  <div style={labelStyle}>自定义舞蹈</div>
+                  <div style={labelStyle}>{t('自定义舞蹈', 'Custom Dances')}</div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                     {customDances.map((dance) => (
                       <div
@@ -700,7 +723,7 @@ export function SettingsPanel({
                           <div>
                             <div>{dance.label}</div>
                             {dance.bgmUrl && (
-                              <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', marginTop: 1 }}>含BGM</div>
+                              <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', marginTop: 1 }}>{t('含BGM', 'w/ BGM')}</div>
                             )}
                           </div>
                         </div>
@@ -741,7 +764,7 @@ export function SettingsPanel({
               )}
 
               <div style={{ marginTop: 12 }}>
-                <div style={labelStyle}>导入自定义舞蹈</div>
+                <div style={labelStyle}>{t('导入自定义舞蹈', 'Import Custom Dance')}</div>
                 <button
                   disabled={importingDance}
                   onClick={async () => {
@@ -781,10 +804,10 @@ export function SettingsPanel({
                   {importingDance
                     ? <Loader size={14} style={{ animation: 'spin 1s linear infinite' }} />
                     : <Upload size={14} />}
-                  {importingDance ? '导入中…' : '选择 VMD 舞蹈文件…'}
+                  {importingDance ? t('导入中…', 'Importing…') : t('选择 VMD 舞蹈文件…', 'Select VMD dance file…')}
                 </button>
                 <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', marginTop: 4 }}>
-                  选择 .vmd 舞蹈文件后，可选择配套 .mp3 音乐文件
+                  {t('选择 .vmd 舞蹈文件后，可选择配套 .mp3 音乐文件', 'Select a .vmd dance file, then optionally pick a matching .mp3')}
                 </div>
               </div>
             </div>
