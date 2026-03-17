@@ -11,108 +11,111 @@ interface MoodIndicatorProps {
 
 const OPENCLAW_URL = 'http://127.0.0.1:18789'
 
-const BAR_W = 160
-const BAR_H = 28
+const BALL_SIZE = 48
 const DPR = typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1
 
-// Wave parameters
-const WAVE_LENGTH = 20  // one full wave cycle in px
-const WAVE_HEIGHT = 3   // wave amplitude in px
-
-// 5 tiers: 90+ pink, 70+ orange, 50+ green, 20+ blue, 0+ grey
-function moodColor(percent: number): { primary: string; secondary: string; border: string } {
-  let r: number, g: number, b: number
-  if (percent >= 90)      { r = 255; g = 107; b = 157 }  // pink
-  else if (percent >= 70)  { r = 255; g = 165; b = 70 }   // orange
-  else if (percent >= 50)  { r = 72; g = 199; b = 142 }   // green
-  else if (percent >= 30)  { r = 78; g = 168; b = 222 }   // blue
-  else                     { r = 160; g = 168; b = 180 }   // grey
-  return {
-    primary: `rgb(${r},${g},${b})`,
-    secondary: `rgba(${r},${g},${b},0.35)`,
-    border: `rgba(${r},${g},${b},0.6)`,
-  }
+// 5 tiers: 90+ pink, 70+ orange, 50+ green, 30+ blue, 0+ grey
+function moodRGB(percent: number): [number, number, number] {
+  if (percent >= 90) return [255, 107, 157]
+  if (percent >= 70) return [255, 165, 70]
+  if (percent >= 50) return [72, 199, 142]
+  if (percent >= 30) return [78, 168, 222]
+  return [160, 168, 180]
 }
 
-/** Draw a horizontal wave-filled rounded-rect progress bar onto a canvas */
-function drawWaveBar(
+/**
+ * Draw a liquid-filled sphere with two bezier-curve wave layers
+ * and a subtle glass highlight for 3D depth.
+ */
+function drawLiquidBall(
   ctx: CanvasRenderingContext2D,
-  w: number, h: number,
+  size: number,
   percent: number,
-  phase: number,
-  colors: { primary: string; secondary: string; border: string },
+  t: number,
 ) {
-  const radius = h / 2
-  ctx.clearRect(0, 0, w, h)
+  const r = size / 2
+  const cx = r
+  const cy = r
+  ctx.clearRect(0, 0, size, size)
 
-  // -- Background rounded rect (clip region) --
+  // ── Clip to circle ──
   ctx.save()
   ctx.beginPath()
-  roundRect(ctx, 0, 0, w, h, radius)
+  ctx.arc(cx, cy, r - 1, 0, Math.PI * 2)
   ctx.clip()
 
-  // Fill background
-  ctx.fillStyle = 'rgba(233, 236, 239, 0.85)'
-  ctx.fillRect(0, 0, w, h)
+  // ── Background ──
+  ctx.fillStyle = 'rgba(235, 238, 242, 0.9)'
+  ctx.fillRect(0, 0, size, size)
 
-  // The fill edge x position
-  const fillX = (percent / 100) * w
+  // ── Water level ──
+  const waterY = size * (1 - percent / 100)
+  const [cr, cg, cb] = moodRGB(percent)
 
-  // -- Second (lighter) wave layer --
-  ctx.beginPath()
-  const secondPhase = phase + Math.PI * 0.7  // offset from primary wave
-  ctx.moveTo(0, h)
-  ctx.lineTo(0, 0)
-  // Wave edge goes top-to-bottom along x = fillX
-  for (let y = 0; y <= h; y += 1) {
-    const waveOffset = Math.sin((y / WAVE_LENGTH) * Math.PI * 2 + secondPhase) * WAVE_HEIGHT
-    ctx.lineTo(fillX + waveOffset, y)
+  // Helper: draw a bezier wave path across the circle and fill below
+  const drawWave = (
+    amplitude: number,
+    waveLen: number,
+    speed: number,
+    phaseOffset: number,
+    alpha: number,
+  ) => {
+    ctx.beginPath()
+    const yBase = waterY
+    // Start from left edge
+    ctx.moveTo(0, yBase)
+    const steps = 8
+    const stepW = size / steps
+    for (let i = 0; i < steps; i++) {
+      const x0 = i * stepW
+      const x1 = (i + 0.5) * stepW
+      const x2 = (i + 1) * stepW
+      // Alternating wave peaks using sin for control point offsets
+      const cp1y = yBase + Math.sin(t * speed + phaseOffset + i * (Math.PI * 2 / steps) * (size / waveLen)) * amplitude
+      const cp2y = yBase + Math.sin(t * speed + phaseOffset + (i + 0.5) * (Math.PI * 2 / steps) * (size / waveLen)) * amplitude
+      const ey = yBase + Math.sin(t * speed + phaseOffset + (i + 1) * (Math.PI * 2 / steps) * (size / waveLen)) * amplitude * 0.8
+      void x1 // use bezier with two control points
+      ctx.bezierCurveTo(x0 + stepW * 0.33, cp1y, x0 + stepW * 0.66, cp2y, x2, ey)
+    }
+    // Close path at bottom
+    ctx.lineTo(size, size)
+    ctx.lineTo(0, size)
+    ctx.closePath()
+    ctx.fillStyle = `rgba(${cr},${cg},${cb},${alpha})`
+    ctx.fill()
   }
-  ctx.lineTo(0, h)
-  ctx.closePath()
-  ctx.fillStyle = colors.secondary
-  ctx.fill()
 
-  // -- Primary wave layer --
-  ctx.beginPath()
-  ctx.moveTo(0, h)
-  ctx.lineTo(0, 0)
-  for (let y = 0; y <= h; y += 1) {
-    const waveOffset = Math.sin((y / WAVE_LENGTH) * Math.PI * 2 + phase) * WAVE_HEIGHT
-    ctx.lineTo(fillX + waveOffset, y)
-  }
-  ctx.lineTo(0, h)
-  ctx.closePath()
-  ctx.fillStyle = colors.primary
-  ctx.fill()
+  // Back wave: slower, slightly larger amplitude, lighter
+  drawWave(3.5, 40, 1.8, 0, 0.35)
+  // Front wave: faster, smaller amplitude, full color
+  drawWave(2.5, 32, 2.5, Math.PI * 0.8, 0.85)
 
   ctx.restore()
 
-  // -- Border --
+  // ── Border ──
   ctx.beginPath()
-  roundRect(ctx, 0.5, 0.5, w - 1, h - 1, radius - 0.5)
-  ctx.strokeStyle = colors.border
+  ctx.arc(cx, cy, r - 1, 0, Math.PI * 2)
+  ctx.strokeStyle = `rgba(${cr},${cg},${cb},0.5)`
   ctx.lineWidth = 1.5
   ctx.stroke()
-}
 
-function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
-  ctx.moveTo(x + r, y)
-  ctx.lineTo(x + w - r, y)
-  ctx.arcTo(x + w, y, x + w, y + r, r)
-  ctx.lineTo(x + w, y + h - r)
-  ctx.arcTo(x + w, y + h, x + w - r, y + h, r)
-  ctx.lineTo(x + r, y + h)
-  ctx.arcTo(x, y + h, x, y + h - r, r)
-  ctx.lineTo(x, y + r)
-  ctx.arcTo(x, y, x + r, y, r)
-  ctx.closePath()
+  // ── Glass highlight (top-left specular) ──
+  const hlR = r * 0.38
+  const hlX = cx - r * 0.25
+  const hlY = cy - r * 0.28
+  const hlGrad = ctx.createRadialGradient(hlX, hlY, 0, hlX, hlY, hlR)
+  hlGrad.addColorStop(0, 'rgba(255,255,255,0.45)')
+  hlGrad.addColorStop(1, 'rgba(255,255,255,0)')
+  ctx.beginPath()
+  ctx.arc(hlX, hlY, hlR, 0, Math.PI * 2)
+  ctx.fillStyle = hlGrad
+  ctx.fill()
 }
 
 let bubbleIdCounter = 0
 
 export function MoodIndicator({ language = 'zh' }: MoodIndicatorProps) {
-  const t = (zh: string, en: string) => language === 'en' ? en : zh
+  const tr = (zh: string, en: string) => language === 'en' ? en : zh
   const [mood, setMood] = useState(60)
   const [bubbles, setBubbles] = useState<MoodBubble[]>([])
   const [visible, setVisible] = useState(false)
@@ -122,8 +125,8 @@ export function MoodIndicator({ language = 'zh' }: MoodIndicatorProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const animRef = useRef<number>(0)
-  const phaseRef = useRef(0)
-  const displayPercentRef = useRef(60) // smoothed percent for animation
+  const displayPercentRef = useRef(60)
+  const timeRef = useRef(0)
 
   useEffect(() => {
     fetch(`${OPENCLAW_URL}/plugins/claw-sama/settings`)
@@ -155,37 +158,31 @@ export function MoodIndicator({ language = 'zh' }: MoodIndicatorProps) {
     return () => es.close()
   }, [showBriefly])
 
-  // Canvas wave animation loop
+  // Canvas animation loop
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
     const ctx = canvas.getContext('2d')
     if (!ctx) return
 
-    canvas.width = BAR_W * DPR
-    canvas.height = BAR_H * DPR
+    canvas.width = BALL_SIZE * DPR
+    canvas.height = BALL_SIZE * DPR
     ctx.scale(DPR, DPR)
 
     let running = true
     const animate = () => {
       if (!running) return
-      // Smoothly interpolate display percent toward target mood
       const target = Math.max(2, mood)
-      const diff = target - displayPercentRef.current
-      displayPercentRef.current += diff * 0.08
+      displayPercentRef.current += (target - displayPercentRef.current) * 0.08
+      timeRef.current += 0.04
 
-      // Advance wave phase
-      phaseRef.current += 0.06
-
-      const colors = moodColor(displayPercentRef.current)
-      drawWaveBar(ctx, BAR_W, BAR_H, displayPercentRef.current, phaseRef.current, colors)
+      drawLiquidBall(ctx, BALL_SIZE, displayPercentRef.current, timeRef.current)
       animRef.current = requestAnimationFrame(animate)
     }
     animate()
     return () => { running = false; cancelAnimationFrame(animRef.current) }
   }, [mood])
 
-  // Drag to reposition
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
     e.preventDefault()
     e.stopPropagation()
@@ -202,14 +199,12 @@ export function MoodIndicator({ language = 'zh' }: MoodIndicatorProps) {
     const onMove = (ev: PointerEvent) => {
       setPos({ x: ev.clientX - offsetX, y: ev.clientY - offsetY })
     }
-
     const onUp = () => {
       setDragging(false)
       window.removeEventListener('pointermove', onMove)
       window.removeEventListener('pointerup', onUp)
       hideTimerRef.current = setTimeout(() => setVisible(false), 3000)
     }
-
     window.addEventListener('pointermove', onMove)
     window.addEventListener('pointerup', onUp)
   }, [])
@@ -239,7 +234,7 @@ export function MoodIndicator({ language = 'zh' }: MoodIndicatorProps) {
         flexDirection: 'column',
         alignItems: 'center',
         transition: 'opacity 0.5s ease',
-        opacity: visible || bubbles.length > 0 ? 1 : 0.2,
+        opacity: visible || bubbles.length > 0 ? 1 : 0.5,
         cursor: dragging ? 'grabbing' : 'grab',
         userSelect: 'none',
       }}
@@ -249,7 +244,7 @@ export function MoodIndicator({ language = 'zh' }: MoodIndicatorProps) {
       data-no-passthrough
     >
       {/* Floating bubbles */}
-      <div style={{ position: 'relative', width: BAR_W + 40, height: 22, overflow: 'visible' }}>
+      <div style={{ position: 'relative', width: BALL_SIZE + 40, height: 20, overflow: 'visible' }}>
         {bubbles.map((b) => (
           <span
             key={b.id}
@@ -257,7 +252,7 @@ export function MoodIndicator({ language = 'zh' }: MoodIndicatorProps) {
               position: 'absolute',
               left: '50%',
               bottom: 0,
-              fontSize: 13,
+              fontSize: 12,
               fontWeight: 700,
               color: b.delta > 0 ? '#FF6B9D' : '#A0A8B4',
               whiteSpace: 'nowrap',
@@ -267,20 +262,19 @@ export function MoodIndicator({ language = 'zh' }: MoodIndicatorProps) {
               textShadow: '0 1px 4px rgba(0,0,0,0.3)',
             }}
           >
-            {t('心情', 'Mood')}{b.delta > 0 ? `+${b.delta}` : b.delta}
+            {tr('心情', 'Mood')}{b.delta > 0 ? `+${b.delta}` : b.delta}
           </span>
         ))}
       </div>
 
-      {/* Wave progress bar (canvas) */}
-      <div style={{ position: 'relative', width: BAR_W, height: BAR_H }}>
+      {/* Liquid ball */}
+      <div style={{ position: 'relative', width: BALL_SIZE, height: BALL_SIZE }}>
         <canvas
           ref={canvasRef}
-          width={BAR_W * DPR}
-          height={BAR_H * DPR}
-          style={{ width: BAR_W, height: BAR_H, display: 'block' }}
+          width={BALL_SIZE * DPR}
+          height={BALL_SIZE * DPR}
+          style={{ width: BALL_SIZE, height: BALL_SIZE, display: 'block' }}
         />
-        {/* Centered percentage text overlay */}
         <div style={{
           position: 'absolute',
           top: '50%',
@@ -288,15 +282,14 @@ export function MoodIndicator({ language = 'zh' }: MoodIndicatorProps) {
           transform: 'translate(-50%, -50%)',
           color: '#fff',
           fontWeight: 700,
-          fontSize: 12,
+          fontSize: 11,
           whiteSpace: 'nowrap',
           fontFamily: '"Segoe UI", "Microsoft YaHei", sans-serif',
-          lineHeight: 1.4,
-          letterSpacing: 0.3,
+          lineHeight: 1,
           pointerEvents: 'none',
-          textShadow: '0 1px 3px rgba(0, 0, 0, 0.3)',
+          textShadow: '0 1px 3px rgba(0, 0, 0, 0.45)',
         }}>
-          {t('心情', 'Mood')} {mood}%
+          {mood}%
         </div>
       </div>
     </div>

@@ -21,7 +21,7 @@ jobs:
             target: x86_64-pc-windows-msvc
           - platform: macos-latest
             target: aarch64-apple-darwin
-          - platform: macos-14
+          - platform: macos-15-intel
             target: x86_64-apple-darwin
 
     runs-on: ${{ matrix.platform }}
