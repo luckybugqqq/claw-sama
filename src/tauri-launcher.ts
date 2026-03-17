@@ -37,6 +37,10 @@ function spawnBinary(resolved: { path: string; isAppBundle: boolean }, log: { in
   log.info(`Launching Claw Sama: ${resolved.path} (appBundle=${resolved.isAppBundle})`);
 
   if (resolved.isAppBundle && process.platform === "darwin") {
+    // npm does not preserve execute permissions or remove quarantine attributes.
+    // Fix both before launching the .app bundle.
+    try { execSync(`chmod -R +x ${JSON.stringify(resolved.path + "/Contents/MacOS")}`, { timeout: 5000 }); } catch {}
+    try { execSync(`xattr -cr ${JSON.stringify(resolved.path)}`, { timeout: 10000 }); } catch {}
     tauriProcess = spawn("open", ["-W", "-a", resolved.path], { stdio: "ignore" });
   } else {
     if (!resolved.isAppBundle && process.platform !== "win32") {

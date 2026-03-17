@@ -152,6 +152,7 @@ jobs:
           find artifacts -type f
           if [ "${{ matrix.is_app_bundle }}" = "true" ]; then
             mv artifacts "${{ matrix.npm_dir }}/${{ matrix.binary_name }}"
+            chmod -R +x "${{ matrix.npm_dir }}/${{ matrix.binary_name }}/Contents/MacOS"
             ls -la "${{ matrix.npm_dir }}/"
           else
             bin=$(find artifacts -name '${{ matrix.binary_name }}' -type f | head -1)
