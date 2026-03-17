@@ -6,13 +6,21 @@ interface MoodBubble {
 }
 
 interface MoodIndicatorProps {
-  language?: 'zh' | 'en'
+  uiAlign?: 'left' | 'right'
 }
 
 const OPENCLAW_URL = 'http://127.0.0.1:18789'
 
-const BALL_SIZE = 48
+const BAR_WIDTH = 10
+const BAR_HEIGHT = 120
+const BORDER_GAP = 4      // gap between bar and border
+const BORDER_WIDTH = 2    // border stroke thickness
+const HEART_SIZE = 23
 const DPR = typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1
+
+// Wave parameters (ported from Android HorizontalWaveProgressView)
+const WAVE_LENGTH = 8
+const WAVE_HEIGHT = 2.5
 
 // 5 tiers: 90+ pink, 70+ orange, 50+ green, 30+ blue, 0+ grey
 function moodRGB(percent: number): [number, number, number] {
@@ -23,110 +31,179 @@ function moodRGB(percent: number): [number, number, number] {
   return [160, 168, 180]
 }
 
-/**
- * Draw a liquid-filled sphere with two bezier-curve wave layers
- * and a subtle glass highlight for 3D depth.
- */
-function drawLiquidBall(
-  ctx: CanvasRenderingContext2D,
-  size: number,
-  percent: number,
-  t: number,
-) {
-  const r = size / 2
-  const cx = r
-  const cy = r
-  ctx.clearRect(0, 0, size, size)
-
-  // ── Clip to circle ──
-  ctx.save()
+/** Rounded-rect path helper */
+function roundedRectPath(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
   ctx.beginPath()
-  ctx.arc(cx, cy, r - 1, 0, Math.PI * 2)
-  ctx.clip()
+  ctx.moveTo(x + r, y)
+  ctx.lineTo(x + w - r, y)
+  ctx.arc(x + w - r, y + r, r, -Math.PI / 2, 0)
+  ctx.lineTo(x + w, y + h - r)
+  ctx.arc(x + w - r, y + h - r, r, 0, Math.PI / 2)
+  ctx.lineTo(x + r, y + h)
+  ctx.arc(x + r, y + h - r, r, Math.PI / 2, Math.PI)
+  ctx.lineTo(x, y + r)
+  ctx.arc(x + r, y + r, r, Math.PI, Math.PI * 1.5)
+  ctx.closePath()
+}
 
-  // ── Background ──
-  ctx.fillStyle = 'rgba(235, 238, 242, 0.9)'
-  ctx.fillRect(0, 0, size, size)
+/** Heart path centered at (cx, cy) with given size — classic round heart */
+function heartPath(ctx: CanvasRenderingContext2D, cx: number, cy: number, size: number) {
+  const r = size * 0.45
+  const topY = cy - r * 0.4
+  ctx.beginPath()
+  // Bottom tip
+  ctx.moveTo(cx, cy + r)
+  // Left curve
+  ctx.bezierCurveTo(cx - r * 0.2, cy + r * 0.6, cx - r * 1.1, cy + r * 0.1, cx - r, topY)
+  // Left bump (arc)
+  ctx.arc(cx - r * 0.5, topY, r * 0.5, Math.PI, 0, false)
+  // Right bump (arc)
+  ctx.arc(cx + r * 0.5, topY, r * 0.5, Math.PI, 0, false)
+  // Right curve
+  ctx.bezierCurveTo(cx + r * 1.1, cy + r * 0.1, cx + r * 0.2, cy + r * 0.6, cx, cy + r)
+  ctx.closePath()
+}
 
-  // ── Water level ──
-  const waterY = size * (1 - percent / 100)
-  const [cr, cg, cb] = moodRGB(percent)
+/**
+ * Common wave drawing logic used by both the bar and the heart.
+ * Draws dual bezier waves inside the current clip region.
+ */
+function drawWaves(
+  ctx: CanvasRenderingContext2D,
+  regionWidth: number,
+  regionHeight: number,
+  waterY: number,
+  moveDistance: number,
+  cr: number, cg: number, cb: number,
+) {
+  const fullCycle = WAVE_LENGTH * 2
+  const waveNumber = Math.ceil(regionWidth / fullCycle) + 2
 
-  // Helper: draw a bezier wave path across the circle and fill below
-  const drawWave = (
-    amplitude: number,
-    waveLen: number,
-    speed: number,
-    phaseOffset: number,
-    alpha: number,
-  ) => {
+  const drawWave = (scrollDir: number, alpha: number) => {
     ctx.beginPath()
-    const yBase = waterY
-    // Start from left edge
-    ctx.moveTo(0, yBase)
-    const steps = 8
-    const stepW = size / steps
-    for (let i = 0; i < steps; i++) {
-      const x0 = i * stepW
-      const x1 = (i + 0.5) * stepW
-      const x2 = (i + 1) * stepW
-      // Alternating wave peaks using sin for control point offsets
-      const cp1y = yBase + Math.sin(t * speed + phaseOffset + i * (Math.PI * 2 / steps) * (size / waveLen)) * amplitude
-      const cp2y = yBase + Math.sin(t * speed + phaseOffset + (i + 0.5) * (Math.PI * 2 / steps) * (size / waveLen)) * amplitude
-      const ey = yBase + Math.sin(t * speed + phaseOffset + (i + 1) * (Math.PI * 2 / steps) * (size / waveLen)) * amplitude * 0.8
-      void x1 // use bezier with two control points
-      ctx.bezierCurveTo(x0 + stepW * 0.33, cp1y, x0 + stepW * 0.66, cp2y, x2, ey)
+    const offset = (moveDistance * scrollDir) % fullCycle
+    let x = -fullCycle + offset
+    ctx.moveTo(x, waterY)
+
+    for (let i = 0; i < waveNumber * 2; i++) {
+      ctx.quadraticCurveTo(x + WAVE_LENGTH / 2, waterY - WAVE_HEIGHT, x + WAVE_LENGTH, waterY)
+      x += WAVE_LENGTH
+      ctx.quadraticCurveTo(x + WAVE_LENGTH / 2, waterY + WAVE_HEIGHT, x + WAVE_LENGTH, waterY)
+      x += WAVE_LENGTH
     }
-    // Close path at bottom
-    ctx.lineTo(size, size)
-    ctx.lineTo(0, size)
+
+    ctx.lineTo(x, regionHeight)
+    ctx.lineTo(-fullCycle, regionHeight)
     ctx.closePath()
     ctx.fillStyle = `rgba(${cr},${cg},${cb},${alpha})`
     ctx.fill()
   }
 
-  // Back wave: slower, slightly larger amplitude, lighter
-  drawWave(3.5, 40, 1.8, 0, 0.35)
-  // Front wave: faster, smaller amplitude, full color
-  drawWave(2.5, 32, 2.5, Math.PI * 0.8, 0.85)
+  drawWave(-1, 0.55)
+  drawWave(1, 1.0)
+}
+
+/**
+ * Draw the vertical liquid-filled bar with border that has a gap.
+ */
+function drawLiquidBar(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  percent: number,
+  moveDistance: number,
+) {
+  const radius = w / 2
+  const totalW = w + (BORDER_GAP + BORDER_WIDTH) * 2
+  const totalH = h + (BORDER_GAP + BORDER_WIDTH) * 2
+  const offsetX = BORDER_GAP + BORDER_WIDTH
+  const offsetY = BORDER_GAP + BORDER_WIDTH
+
+  ctx.clearRect(0, 0, totalW, totalH)
+
+  const waterY = h * (1 - percent / 100)
+  const [cr, cg, cb] = moodRGB(percent)
+
+  // ── Bar fill ──
+  ctx.save()
+  roundedRectPath(ctx, offsetX, offsetY, w, h, radius)
+  ctx.clip()
+
+  ctx.clearRect(offsetX, offsetY, w, h)
+
+  ctx.save()
+  ctx.translate(offsetX, offsetY)
+  drawWaves(ctx, w, h, waterY, moveDistance, cr, cg, cb)
+  ctx.restore()
 
   ctx.restore()
 
-  // ── Border ──
-  ctx.beginPath()
-  ctx.arc(cx, cy, r - 1, 0, Math.PI * 2)
-  ctx.strokeStyle = `rgba(${cr},${cg},${cb},0.5)`
-  ctx.lineWidth = 1.5
+  // ── Border with gap ──
+  const bx = offsetX - BORDER_GAP - BORDER_WIDTH / 2
+  const by = offsetY - BORDER_GAP - BORDER_WIDTH / 2
+  const bw = w + (BORDER_GAP + BORDER_WIDTH / 2) * 2
+  const bh = h + (BORDER_GAP + BORDER_WIDTH / 2) * 2
+  const br = radius + BORDER_GAP + BORDER_WIDTH / 2
+  roundedRectPath(ctx, bx, by, bw, bh, br)
+  ctx.strokeStyle = 'rgba(80, 80, 85, 0.75)'
+  ctx.lineWidth = BORDER_WIDTH
   ctx.stroke()
+}
 
-  // ── Glass highlight (top-left specular) ──
-  const hlR = r * 0.38
-  const hlX = cx - r * 0.25
-  const hlY = cy - r * 0.28
-  const hlGrad = ctx.createRadialGradient(hlX, hlY, 0, hlX, hlY, hlR)
-  hlGrad.addColorStop(0, 'rgba(255,255,255,0.45)')
-  hlGrad.addColorStop(1, 'rgba(255,255,255,0)')
-  ctx.beginPath()
-  ctx.arc(hlX, hlY, hlR, 0, Math.PI * 2)
-  ctx.fillStyle = hlGrad
-  ctx.fill()
+/**
+ * Draw liquid-filled heart icon with border and gap (matching bar style).
+ */
+function drawLiquidHeart(
+  ctx: CanvasRenderingContext2D,
+  size: number,
+  percent: number,
+  moveDistance: number,
+) {
+  ctx.clearRect(0, 0, size, size)
+
+  const cx = size / 2
+  const cy = size / 2
+  const waterY = size * (1 - percent / 100)
+  const [cr, cg, cb] = moodRGB(percent)
+
+  // ── Heart fill ──
+  ctx.save()
+  heartPath(ctx, cx, cy, size)
+  ctx.clip()
+
+  ctx.fillStyle = 'rgba(60, 60, 65, 0.9)'
+  ctx.fillRect(0, 0, size, size)
+
+  drawWaves(ctx, size, size, waterY, moveDistance, cr, cg, cb)
+
+  ctx.restore()
 }
 
 let bubbleIdCounter = 0
 
-export function MoodIndicator({ language = 'zh' }: MoodIndicatorProps) {
-  const tr = (zh: string, en: string) => language === 'en' ? en : zh
+// Canvas total dimensions (bar + border gap)
+const BAR_CANVAS_W = BAR_WIDTH + (BORDER_GAP + BORDER_WIDTH) * 2
+const BAR_CANVAS_H = BAR_HEIGHT + (BORDER_GAP + BORDER_WIDTH) * 2
+
+export function MoodIndicator({ uiAlign = 'right' }: MoodIndicatorProps) {
   const [mood, setMood] = useState(60)
   const [bubbles, setBubbles] = useState<MoodBubble[]>([])
   const [visible, setVisible] = useState(false)
   const [dragging, setDragging] = useState(false)
-  const [pos, setPos] = useState<{ x: number; y: number }>({ x: window.innerWidth / 2, y: 6 })
+  const defaultX = (align: string) => align === 'left' ? window.innerWidth - 8 - BAR_CANVAS_W : 8
+  const [pos, setPos] = useState<{ x: number; y: number }>({ x: defaultX(uiAlign), y: 8 })
+  const [userDragged, setUserDragged] = useState(false)
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
-  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const barCanvasRef = useRef<HTMLCanvasElement>(null)
+  const heartCanvasRef = useRef<HTMLCanvasElement>(null)
   const animRef = useRef<number>(0)
   const displayPercentRef = useRef(60)
-  const timeRef = useRef(0)
+  const moveDistRef = useRef(0)
+
+  useEffect(() => {
+    if (!userDragged) setPos(p => ({ ...p, x: defaultX(uiAlign) }))
+  }, [uiAlign, userDragged])
 
   useEffect(() => {
     fetch(`${OPENCLAW_URL}/plugins/claw-sama/settings`)
@@ -158,25 +235,32 @@ export function MoodIndicator({ language = 'zh' }: MoodIndicatorProps) {
     return () => es.close()
   }, [showBriefly])
 
-  // Canvas animation loop
+  // Canvas animation loop — draws both heart and bar
   useEffect(() => {
-    const canvas = canvasRef.current
-    if (!canvas) return
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
+    const barCanvas = barCanvasRef.current
+    const heartCanvas = heartCanvasRef.current
+    if (!barCanvas || !heartCanvas) return
+    const barCtx = barCanvas.getContext('2d')
+    const heartCtx = heartCanvas.getContext('2d')
+    if (!barCtx || !heartCtx) return
 
-    canvas.width = BALL_SIZE * DPR
-    canvas.height = BALL_SIZE * DPR
-    ctx.scale(DPR, DPR)
+    barCanvas.width = BAR_CANVAS_W * DPR
+    barCanvas.height = BAR_CANVAS_H * DPR
+    barCtx.scale(DPR, DPR)
+
+    heartCanvas.width = HEART_SIZE * DPR
+    heartCanvas.height = HEART_SIZE * DPR
+    heartCtx.scale(DPR, DPR)
 
     let running = true
     const animate = () => {
       if (!running) return
       const target = Math.max(2, mood)
       displayPercentRef.current += (target - displayPercentRef.current) * 0.08
-      timeRef.current += 0.04
+      moveDistRef.current += 0.12
 
-      drawLiquidBall(ctx, BALL_SIZE, displayPercentRef.current, timeRef.current)
+      drawLiquidBar(barCtx, BAR_WIDTH, BAR_HEIGHT, displayPercentRef.current, moveDistRef.current)
+      drawLiquidHeart(heartCtx, HEART_SIZE, displayPercentRef.current, moveDistRef.current)
       animRef.current = requestAnimationFrame(animate)
     }
     animate()
@@ -187,13 +271,14 @@ export function MoodIndicator({ language = 'zh' }: MoodIndicatorProps) {
     e.preventDefault()
     e.stopPropagation()
     setDragging(true)
+    setUserDragged(true)
     setVisible(true)
     if (hideTimerRef.current) { clearTimeout(hideTimerRef.current); hideTimerRef.current = null }
 
     const el = containerRef.current
     if (!el) return
     const rect = el.getBoundingClientRect()
-    const offsetX = e.clientX - rect.left - rect.width / 2
+    const offsetX = e.clientX - rect.left
     const offsetY = e.clientY - rect.top
 
     const onMove = (ev: PointerEvent) => {
@@ -227,7 +312,6 @@ export function MoodIndicator({ language = 'zh' }: MoodIndicatorProps) {
         position: 'absolute',
         top: pos.y,
         left: pos.x,
-        transform: 'translateX(-50%)',
         zIndex: 250,
         pointerEvents: 'auto',
         display: 'flex',
@@ -243,54 +327,46 @@ export function MoodIndicator({ language = 'zh' }: MoodIndicatorProps) {
       onPointerDown={handlePointerDown}
       data-no-passthrough
     >
-      {/* Floating bubbles */}
-      <div style={{ position: 'relative', width: BALL_SIZE + 40, height: 20, overflow: 'visible' }}>
+      {/* Liquid-filled heart */}
+      <canvas
+        ref={heartCanvasRef}
+        width={HEART_SIZE * DPR}
+        height={HEART_SIZE * DPR}
+        style={{ width: HEART_SIZE, height: HEART_SIZE, display: 'block', marginBottom: 4 }}
+      />
+
+      {/* Vertical liquid bar with border */}
+      <div style={{ position: 'relative', width: BAR_CANVAS_W, height: BAR_CANVAS_H }}>
+        <canvas
+          ref={barCanvasRef}
+          width={BAR_CANVAS_W * DPR}
+          height={BAR_CANVAS_H * DPR}
+          style={{ width: BAR_CANVAS_W, height: BAR_CANVAS_H, display: 'block' }}
+        />
+        {/* Floating bubbles */}
         {bubbles.map((b) => (
           <span
             key={b.id}
             style={{
               position: 'absolute',
               left: '50%',
-              bottom: 0,
-              fontSize: 12,
-              fontWeight: 700,
-              color: b.delta > 0 ? '#FF6B9D' : '#A0A8B4',
+              top: -20,
+              transform: 'translateX(-50%)',
+              fontSize: 14,
+              fontWeight: 800,
+              color: b.delta > 0 ? '#FF6B9D' : '#7EB0D5',
               whiteSpace: 'nowrap',
               pointerEvents: 'none',
-              animation: 'mood-bubble-float 1.8s ease-out forwards',
+              animation: 'mood-bubble-float 2.5s ease-out forwards',
               fontFamily: '"Segoe UI", "Microsoft YaHei", sans-serif',
-              textShadow: '0 1px 4px rgba(0,0,0,0.3)',
+              textShadow: b.delta > 0
+                ? '0 0 6px rgba(255,107,157,0.6), 0 1px 3px rgba(0,0,0,0.4)'
+                : '0 0 6px rgba(126,176,213,0.6), 0 1px 3px rgba(0,0,0,0.4)',
             }}
           >
-            {tr('心情', 'Mood')}{b.delta > 0 ? `+${b.delta}` : b.delta}
+            {b.delta > 0 ? `❤️+${b.delta}` : `🩶${b.delta}`}
           </span>
         ))}
-      </div>
-
-      {/* Liquid ball */}
-      <div style={{ position: 'relative', width: BALL_SIZE, height: BALL_SIZE }}>
-        <canvas
-          ref={canvasRef}
-          width={BALL_SIZE * DPR}
-          height={BALL_SIZE * DPR}
-          style={{ width: BALL_SIZE, height: BALL_SIZE, display: 'block' }}
-        />
-        <div style={{
-          position: 'absolute',
-          top: '50%',
-          left: '50%',
-          transform: 'translate(-50%, -50%)',
-          color: '#fff',
-          fontWeight: 700,
-          fontSize: 11,
-          whiteSpace: 'nowrap',
-          fontFamily: '"Segoe UI", "Microsoft YaHei", sans-serif',
-          lineHeight: 1,
-          pointerEvents: 'none',
-          textShadow: '0 1px 3px rgba(0, 0, 0, 0.45)',
-        }}>
-          {mood}%
-        </div>
       </div>
     </div>
   )

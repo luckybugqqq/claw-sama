@@ -70,7 +70,7 @@ export const CLAW_SAMA_ROUTES: ClawSamaRouteSpec[] = [
 export function buildClawSamaSystemPrompt(): string {
   const moodIndex = currentMood;
   const lines = [
-    `You have a virtual VRM avatar displayed on the user's screen. Use the "claw_sama_emotion" tool to control your facial expression. Always call it BEFORE your text reply. Available emotions: ${VALID_EMOTIONS.join(", ")}.`,
+    `You have a virtual VRM avatar displayed on the user's screen. Use the "claw_sama_emotion" tool to control your facial expression. Always call it AFTER your text reply. Available emotions: ${VALID_EMOTIONS.join(", ")}.`,
     `The tool also accepts a "mood_delta" parameter (-3 to +3) to adjust YOUR OWN mood index. Always include it based on how the conversation makes YOU feel as a character.`,
     `Your current mood index: ${moodIndex}% (0=very sad, 50=neutral, 100=very happy). This reflects YOUR emotional state. React naturally — if the user is kind, your mood goes up; if they're mean or the topic is depressing, your mood drops.`,
     "The user's input may come from speech recognition and could contain typos or homophones — infer the intended meaning from context.",
@@ -114,8 +114,6 @@ $bmp.Dispose()
   }
 }
 
-// Pending emotion buffer — tool stores here, deliver callback flushes with text
-let pendingEmotion: { emotion: string; intensity: number; moodDelta?: number } | null = null;
 
 // Runtime mood state (not persisted)
 const MOOD_BASELINE = 60;
@@ -328,7 +326,7 @@ export function createClawSamaPlugin() {
     },
 
     streaming: {
-      blockStreamingCoalesceDefaults: { minChars: 50, idleMs: 300 },
+      blockStreamingCoalesceDefaults: { minChars: 1, idleMs: 50 },
     },
 
     reload: { configPrefixes: [`channels.${CHANNEL_ID}`] },
@@ -557,20 +555,11 @@ export function createClawSamaPlugin() {
                   const isFinal = info.kind === "final";
                   fullTextBuffer = cleaned;
 
-                  // Grab pending emotion from tool call
-                  const emotion = pendingEmotion;
-                  pendingEmotion = null;
-
                   // Phase 1: broadcast text immediately (zero latency)
-                  const textPayload: VrmBroadcastPayload = {
+                  broadcastToVrm({
                     text: cleaned,
                     streaming: !isFinal,
-                  };
-                  if (emotion) {
-                    textPayload.emotion = emotion.emotion;
-                    textPayload.emotionIntensity = emotion.intensity;
-                  }
-                  broadcastToVrm(textPayload);
+                  });
 
                   // Phase 2: streaming TTS — generate for complete sentences as they arrive
                   ttsTracker.process(cleaned, isFinal);
@@ -652,18 +641,10 @@ export function createClawSamaPlugin() {
 
                   const isFinal = info.kind === "final";
 
-                  const emotion = pendingEmotion;
-                  pendingEmotion = null;
-
-                  const textPayload: VrmBroadcastPayload = {
+                  broadcastToVrm({
                     text: cleaned,
                     streaming: !isFinal,
-                  };
-                  if (emotion) {
-                    textPayload.emotion = emotion.emotion;
-                    textPayload.emotionIntensity = emotion.intensity;
-                  }
-                  broadcastToVrm(textPayload);
+                  });
 
                   ttsTracker2.process(cleaned, isFinal);
                 },
@@ -1054,14 +1035,7 @@ export function createClawSamaPlugin() {
                   if (!cleaned) return;
                   const isFinal = info.kind === "final";
                   fullTextBuffer = cleaned;
-                  const emotion = pendingEmotion;
-                  pendingEmotion = null;
-                  const textPayload: VrmBroadcastPayload = { text: cleaned, streaming: !isFinal };
-                  if (emotion) {
-                    textPayload.emotion = emotion.emotion;
-                    textPayload.emotionIntensity = emotion.intensity;
-                  }
-                  broadcastToVrm(textPayload);
+                  broadcastToVrm({ text: cleaned, streaming: !isFinal });
                   ttsTracker3.process(cleaned, isFinal);
                 },
                 onReplyStart: () => { log?.info?.("Claw Sama: screen observe reply started"); },
@@ -1415,18 +1389,10 @@ export function createClawSamaPlugin() {
 
                   const isFinal = info.kind === "final";
 
-                  const emotion = pendingEmotion;
-                  pendingEmotion = null;
-
-                  const textPayload: VrmBroadcastPayload = {
+                  broadcastToVrm({
                     text: cleaned,
                     streaming: !isFinal,
-                  };
-                  if (emotion) {
-                    textPayload.emotion = emotion.emotion;
-                    textPayload.emotionIntensity = emotion.intensity;
-                  }
-                  broadcastToVrm(textPayload);
+                  });
 
                   ttsTracker4.process(cleaned, isFinal);
                 },
@@ -1496,7 +1462,7 @@ export function createClawSamaPlugin() {
         name: "claw_sama_emotion",
         label: "claw_sama_emotion",
         description:
-          "Set the avatar's facial expression and adjust your own mood index. Call BEFORE your text reply. " +
+          "Set the avatar's facial expression and adjust your own mood index. Call AFTER your text reply. " +
           "Available emotions: " + VALID_EMOTIONS.join(", ") + ". " +
           "You must also set mood_delta (-3 to +3, min ±1) to reflect how the conversation makes YOU feel as a character. " +
           "Positive delta when you feel happy/flattered/excited, negative when you feel sad/annoyed/bored. " +
@@ -1541,7 +1507,8 @@ export function createClawSamaPlugin() {
             broadcastToVrm({ moodDelta: d, moodIndex: currentMood });
           }
 
-          pendingEmotion = { emotion, intensity, moodDelta };
+          // Broadcast emotion directly to frontend
+          broadcastToVrm({ emotion, emotionIntensity: intensity });
           return {
             content: [{ type: "text" as const, text: `Avatar emotion set to ${emotion}.${moodDelta !== undefined ? ` Your mood ${moodDelta > 0 ? "+" : ""}${moodDelta} → ${currentMood}%` : ""}` }],
             details: { emotion, intensity, moodDelta },
@@ -1562,7 +1529,7 @@ export function createClawSamaPlugin() {
           "- Studying: encourage and support\n" +
           "- Nothing special: just chat casually like a friend\n" +
           "Be natural and brief (1-2 sentences). Don't mention 'screenshot' or 'screen observation' — act as if you're right there. " +
-          "Remember to call claw_sama_emotion first to set an appropriate expression.",
+          "Remember to call claw_sama_emotion after your reply to set an appropriate expression.",
         parameters: {
           type: "object" as const,
           properties: {},

@@ -13,8 +13,8 @@ interface EmotionState {
 const emotionStates = new Map<string, EmotionState>([
   ['happy', {
     expression: [
-      { name: 'happy', value: 0.7 },
-      { name: 'aa', value: 0.2 },
+      { name: 'happy', value: 0.2 },
+      { name: 'aa', value: 0.8 },
     ],
     blendDuration: 0.4,
   }],
@@ -74,14 +74,14 @@ const emotionStates = new Map<string, EmotionState>([
   }],
   ['love', {
     expression: [
-      { name: 'happy', value: 0.6 },
+      { name: 'happy', value: 0.2 },
       { name: 'relaxed', value: 0.4 },
     ],
     blendDuration: 0.4,
   }],
   ['flirty', {
     expression: [
-      { name: 'happy', value: 0.5 },
+      { name: 'happy', value: 0.2 },
       { name: 'relaxed', value: 0.3 },
       { name: 'aa', value: 0.15 },
     ],
@@ -89,7 +89,7 @@ const emotionStates = new Map<string, EmotionState>([
   }],
   ['greeting', {
     expression: [
-      { name: 'happy', value: 0.6 },
+      { name: 'happy', value: 0.2 },
       { name: 'aa', value: 0.3 },
     ],
     blendDuration: 0.3,

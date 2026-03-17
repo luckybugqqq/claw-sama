@@ -149,6 +149,21 @@ export function TextBubble({ onMessage, enabled = true, ttsEnabled = true }: { o
     }).catch(onDone)
   }, [tryScheduleHide])
 
+  // Use refs for callback dependencies to keep handleMessage stable
+  const onMessageRef = useRef(onMessage)
+  onMessageRef.current = onMessage
+  const ttsEnabledRef = useRef(ttsEnabled)
+  ttsEnabledRef.current = ttsEnabled
+  const playNextAudioRef = useRef(playNextAudio)
+  playNextAudioRef.current = playNextAudio
+  const tryScheduleHideRef = useRef(tryScheduleHide)
+  tryScheduleHideRef.current = tryScheduleHide
+  const hideBubbleRef = useRef(hideBubble)
+  hideBubbleRef.current = hideBubble
+  const thinkingRef = useRef(thinking)
+  thinkingRef.current = thinking
+
+  // Stable handleMessage — never causes SSE reconnect
   const handleMessage = useCallback((msg: VrmMessage) => {
     // Audio-only message (from TTS queue broadcast)
     if (!msg.text && msg.audioUrl) {
@@ -158,7 +173,7 @@ export function TextBubble({ onMessage, enabled = true, ttsEnabled = true }: { o
       if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null }
       const idx = msg.audioIndex ?? audioReceivedRef.current - 1
       audioQueueRef.current.set(idx, msg.audioUrl)
-      playNextAudio()
+      playNextAudioRef.current()
       return
     }
 
@@ -172,17 +187,17 @@ export function TextBubble({ onMessage, enabled = true, ttsEnabled = true }: { o
       setVisible(true)
       streamingDoneRef.current = true
       if (timerRef.current) clearTimeout(timerRef.current)
-      timerRef.current = setTimeout(hideBubble, 15_000)
+      timerRef.current = setTimeout(() => hideBubbleRef.current(), 15_000)
       return
     }
 
     // Emotion-only message
     if (!msg.text) {
       if (msg.emotion) {
-        onMessage?.({ ...msg, emotionDuration: msg.emotionDuration ?? 10000 })
-        if (thinking) {
+        onMessageRef.current?.({ ...msg, emotionDuration: msg.emotionDuration ?? 10000 })
+        if (thinkingRef.current) {
           setThinking(false)
-          hideBubble()
+          hideBubbleRef.current()
         }
       }
       return
@@ -221,7 +236,7 @@ export function TextBubble({ onMessage, enabled = true, ttsEnabled = true }: { o
       : 0
     setCharCount(startFrom)
 
-    const baseRate = getCharRate(fullText, ttsEnabled)
+    const baseRate = getCharRate(fullText, ttsEnabledRef.current)
 
     const startTypewriter = (audioDurationMs?: number) => {
       const remainingChars = graphemes.length - startFrom
@@ -229,7 +244,7 @@ export function TextBubble({ onMessage, enabled = true, ttsEnabled = true }: { o
         prevRevealedRef.current = graphemes.length
         setCharCount(graphemes.length)
         // typewriterRef stays null — typewriter is "done"
-        tryScheduleHide()
+        tryScheduleHideRef.current()
         return
       }
 
@@ -240,7 +255,7 @@ export function TextBubble({ onMessage, enabled = true, ttsEnabled = true }: { o
       const emotionDuration = audioDurationMs
         ? Math.max(audioDurationMs + HIDE_DELAY_MS, remainingChars * charInterval + 5000)
         : remainingChars * charInterval + 5000
-      setTimeout(() => onMessage?.({ ...msg, emotionDuration }), 1000)
+      setTimeout(() => onMessageRef.current?.({ ...msg, emotionDuration }), 1000)
 
       let idx = startFrom
       typewriterRef.current = setInterval(() => {
@@ -250,7 +265,7 @@ export function TextBubble({ onMessage, enabled = true, ttsEnabled = true }: { o
           prevRevealedRef.current = graphemes.length
           if (typewriterRef.current) { clearInterval(typewriterRef.current); typewriterRef.current = null }
           // Typewriter done — check if we can hide
-          tryScheduleHide()
+          tryScheduleHideRef.current()
         } else {
           setCharCount(idx)
           prevRevealedRef.current = idx
@@ -258,7 +273,7 @@ export function TextBubble({ onMessage, enabled = true, ttsEnabled = true }: { o
       }, charInterval)
     }
 
-    if (ttsEnabled && msg.audioUrl) {
+    if (ttsEnabledRef.current && msg.audioUrl) {
       // First text+audio message: play directly and start typewriter synced to audio
       audioQueueRef.current.clear()
       audioPlayingRef.current = false
@@ -278,7 +293,7 @@ export function TextBubble({ onMessage, enabled = true, ttsEnabled = true }: { o
     } else {
       startTypewriter()
     }
-  }, [onMessage, ttsEnabled, playNextAudio, tryScheduleHide, hideBubble, thinking])
+  }, []) // stable — no deps, uses refs for everything
 
   useEffect(() => {
     const es = new EventSource('http://127.0.0.1:18789/plugins/claw-sama/events')

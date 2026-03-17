@@ -367,7 +367,7 @@ export default function App() {
     >
       <ResizeHandles />
       <VRMScene ref={sceneRef} modelPath={modelPath} onTouch={handleTouch} onModelLoaded={uploadVrmScreenshot} />
-      {!hideMood && <MoodIndicator language={language} />}
+      {!hideMood && <MoodIndicator uiAlign={uiAlign} />}
       <TextBubble onMessage={handleVrmMessageWithActivity} enabled={showText} ttsEnabled={ttsEnabled} />
       {!hideUI && <ChatInput uiAlign={uiAlign} onHistoryOpen={() => setHistoryOpen(true)} onNewSession={clearContext} language={language} />}
       <HistoryPanel

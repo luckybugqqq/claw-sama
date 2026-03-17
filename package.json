@@ -1,9 +1,12 @@
 {
   "name": "@luckybugqqq/claw-sama",
-  "version": "0.6.5",
+  "version": "0.6.6",
   "description": "VRM avatar desktop pet plugin for OpenClaw",
   "license": "MIT",
   "type": "module",
+  "scripts": {
+    "bump": "node -e \"const fs=require('fs');const v=process.argv[1];if(!v){console.error('Usage: npm run bump <version>');process.exit(1)}const f='package.json';const p=JSON.parse(fs.readFileSync(f));p.version=v;for(const k of Object.keys(p.optionalDependencies||{}))p.optionalDependencies[k]=v;fs.writeFileSync(f,JSON.stringify(p,null,2)+'\\n');console.log('Bumped to '+v)\" --"
+  },
   "openclaw": {
     "extensions": [
       "./index.ts"
@@ -15,9 +18,9 @@
     "openclaw.plugin.json"
   ],
   "optionalDependencies": {
-    "@luckybugqqq/claw-sama-win32-x64": "0.5.7",
-    "@luckybugqqq/claw-sama-darwin-arm64": "0.5.7",
-    "@luckybugqqq/claw-sama-darwin-x64": "0.5.7"
+    "@luckybugqqq/claw-sama-win32-x64": "0.6.6",
+    "@luckybugqqq/claw-sama-darwin-arm64": "0.6.6",
+    "@luckybugqqq/claw-sama-darwin-x64": "0.6.6"
   },
   "dependencies": {
     "node-edge-tts": "^1.2.10"

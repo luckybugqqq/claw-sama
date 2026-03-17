@@ -1,4 +1,4 @@
-import { useEffect, useRef, useImperativeHandle, forwardRef } from 'react'
+import { useEffect, useRef, useImperativeHandle, forwardRef, useState, useCallback } from 'react'
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm'
@@ -163,6 +163,15 @@ export const VRMScene = forwardRef<VRMSceneHandle, VRMSceneProps>(function VRMSc
   onModelLoaded,
 }, ref) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const [ripples, setRipples] = useState<{ id: number; x: number; y: number; confirmed: boolean }[]>([])
+  const rippleIdRef = useRef(0)
+
+  const spawnRipple = useCallback((x: number, y: number, confirmed: boolean) => {
+    const id = ++rippleIdRef.current
+    setRipples(prev => [...prev, { id, x, y, confirmed }])
+    setTimeout(() => setRipples(prev => prev.filter(r => r.id !== id)), confirmed ? 700 : 500)
+  }, [])
+
   const emoteRef = useRef<EmoteController | null>(null)
   const resetCameraRef = useRef<(() => void) | null>(null)
   const trackingModeRef = useRef<TrackingMode>('mouse')
@@ -625,11 +634,13 @@ export const VRMScene = forwardRef<VRMSceneHandle, VRMSceneProps>(function VRMSc
           if (now - lastTapTime < DOUBLE_TAP_WINDOW && lastTapRegion === region && now - lastTouchFireTime > TOUCH_COOLDOWN) {
             // Double-tap confirmed
             lastTouchFireTime = now
+            spawnRipple(e.clientX, e.clientY, true)
             onTouchRef.current?.(region)
             lastTapTime = 0
             lastTapRegion = null
           } else {
             // First tap — wait for second
+            spawnRipple(e.clientX, e.clientY, false)
             lastTapTime = now
             lastTapRegion = region
           }
@@ -780,16 +791,25 @@ export const VRMScene = forwardRef<VRMSceneHandle, VRMSceneProps>(function VRMSc
   }, [modelPath, idleAnimationPath])
 
   return (
-    <canvas
-      ref={canvasRef}
-      style={{
-        display: 'block',
-        width: '100%',
-        height: '100%',
-        background: 'transparent',
-        cursor: 'grab',
-      }}
-    />
+    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+      <canvas
+        ref={canvasRef}
+        style={{
+          display: 'block',
+          width: '100%',
+          height: '100%',
+          background: 'transparent',
+          cursor: 'grab',
+        }}
+      />
+      {ripples.map(r => (
+        <span
+          key={r.id}
+          className={r.confirmed ? 'touch-ripple confirmed' : 'touch-ripple'}
+          style={{ left: r.x, top: r.y }}
+        />
+      ))}
+    </div>
   )
 })
 
