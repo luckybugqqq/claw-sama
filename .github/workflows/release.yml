@@ -57,30 +57,19 @@ jobs:
             app/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi
             app/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
 
-      - name: Zip .app bundle (macOS)
-        if: startsWith(matrix.platform, 'macos')
-        run: |
-          cd app/src-tauri/target/${{ matrix.target }}/release/bundle/macos
-          for app in *.app; do
-            zip -r "${app%.app}-${{ matrix.target }}.app.zip" "$app"
-          done
-
       - name: Upload artifacts (macOS)
         if: startsWith(matrix.platform, 'macos')
         uses: actions/upload-artifact@v6
         with:
           name: claw-sama-macos-${{ matrix.target }}
-          path: |
-            app/src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg
-            app/src-tauri/target/${{ matrix.target }}/release/bundle/macos/*.zip
+          path: app/src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg
 
-      # Upload zipped .app bundle for npm packaging
-      - name: Upload .app zip for npm (macOS)
+      - name: Upload .app bundle for npm (macOS)
         if: startsWith(matrix.platform, 'macos')
         uses: actions/upload-artifact@v6
         with:
           name: claw-sama-app-${{ matrix.target }}
-          path: app/src-tauri/target/${{ matrix.target }}/release/bundle/macos/Claw Sama-${{ matrix.target }}.app.zip
+          path: app/src-tauri/target/${{ matrix.target }}/release/bundle/macos/Claw Sama.app
 
   release:
     needs: build
@@ -88,8 +77,16 @@ jobs:
     steps:
       - uses: actions/download-artifact@v7
         with:
+          name: claw-sama-windows
           path: artifacts
-          merge-multiple: true
+      - uses: actions/download-artifact@v7
+        with:
+          name: claw-sama-macos-aarch64-apple-darwin
+          path: artifacts
+      - uses: actions/download-artifact@v7
+        with:
+          name: claw-sama-macos-x86_64-apple-darwin
+          path: artifacts
 
       - name: List artifacts
         run: find artifacts -type f 2>/dev/null || ls -R artifacts
@@ -115,12 +112,10 @@ jobs:
             npm_dir: npm/darwin-arm64
             binary_name: "Claw Sama.app"
             is_app_bundle: true
-            zip_name: "Claw Sama-aarch64-apple-darwin.app.zip"
           - artifact: claw-sama-app-x86_64-apple-darwin
             npm_dir: npm/darwin-x64
             binary_name: "Claw Sama.app"
             is_app_bundle: true
-            zip_name: "Claw Sama-x86_64-apple-darwin.app.zip"
     steps:
       - uses: actions/checkout@v6
 
@@ -153,16 +148,8 @@ jobs:
           echo "=== artifacts contents ==="
           find artifacts -type f
           if [ "${{ matrix.is_app_bundle }}" = "true" ]; then
-            # Unzip .app bundle from the zip artifact
-            zip_file=$(find artifacts -name '*.app.zip' -type f | head -1)
-            if [ -z "$zip_file" ]; then
-              echo "ERROR: .app.zip not found in artifacts"
-              exit 1
-            fi
-            cd "${{ matrix.npm_dir }}"
-            unzip -o "../../$zip_file"
-            # Rename if needed (zip contains "Claw Sama.app" directory)
-            ls -la
+            mv artifacts/"${{ matrix.binary_name }}" "${{ matrix.npm_dir }}/"
+            ls -la "${{ matrix.npm_dir }}/"
           else
             bin=$(find artifacts -name '${{ matrix.binary_name }}' -type f | head -1)
             if [ -z "$bin" ]; then
