@@ -269,38 +269,38 @@ export default function App() {
   // Each region has multiple possible reactions, randomly selected (from lobe-vidol female defaults)
   const touchReactions: Record<TouchRegion, { emotion: string; action?: string }[]> = {
     head: [
-      { emotion: 'happy', action: 'happy' },
-      { emotion: 'happy', action: 'happy' },
-      { emotion: 'love', action: 'shy' },
-      { emotion: 'relaxed', action: 'salute' },
-      { emotion: 'angry', action: 'angry' },
+      { emotion: 'relaxed', action: 'happy' },
+      { emotion: 'relaxed', action: 'shy' },
+      { emotion: 'relaxed', action: 'happy' },
+      { emotion: 'relaxed', action: 'shy' },
+      { emotion: 'angry', action: 'angryPump' },
+      { emotion: 'relaxed', action: 'excited' },
     ],
     arm: [
+      { emotion: 'surprised', action: 'excited' },
       { emotion: 'happy', action: 'happy' },
       { emotion: 'relaxed', action: 'greeting' },
-      { emotion: 'happy', action: 'salute' },
+      { emotion: 'relaxed', action: 'salute' },
       { emotion: 'relaxed', action: 'akimbo' },
     ],
     chest: [
       { emotion: 'angry', action: 'angryPump' },
       { emotion: 'angry', action: 'angry' },
-      { emotion: 'surprised', action: 'excited' },
       { emotion: 'angry', action: 'point' },
     ],
     belly: [
-      { emotion: 'surprised', action: 'excited' },
+      { emotion: 'angry', action: 'angryPump' },
       { emotion: 'angry', action: 'angry' },
       { emotion: 'awkward', action: 'playFingers' },
       { emotion: 'angry', action: 'akimbo' },
     ],
     buttocks: [
       { emotion: 'angry', action: 'angryPump' },
-      { emotion: 'surprised', action: 'excited' },
       { emotion: 'angry', action: 'point' },
       { emotion: 'sad', action: 'shy' },
     ],
     leg: [
-      { emotion: 'surprised', action: 'stretch' },
+      { emotion: 'sad', action: 'shy' },
       { emotion: 'angry', action: 'angry' },
       { emotion: 'angry', action: 'point' },
       { emotion: 'angry', action: 'angryPump' },

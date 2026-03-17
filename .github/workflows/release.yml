@@ -74,13 +74,13 @@ jobs:
             app/src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg
             app/src-tauri/target/${{ matrix.target }}/release/bundle/macos/*.zip
 
-      # Upload .app bundle for npm packaging (instead of raw binary)
-      - name: Upload .app bundle for npm (macOS)
+      # Upload zipped .app bundle for npm packaging
+      - name: Upload .app zip for npm (macOS)
         if: startsWith(matrix.platform, 'macos')
         uses: actions/upload-artifact@v6
         with:
           name: claw-sama-app-${{ matrix.target }}
-          path: app/src-tauri/target/${{ matrix.target }}/release/bundle/macos/Claw Sama.app
+          path: app/src-tauri/target/${{ matrix.target }}/release/bundle/macos/Claw Sama-${{ matrix.target }}.app.zip
 
   release:
     needs: build
@@ -115,10 +115,12 @@ jobs:
             npm_dir: npm/darwin-arm64
             binary_name: "Claw Sama.app"
             is_app_bundle: true
+            zip_name: "Claw Sama-aarch64-apple-darwin.app.zip"
           - artifact: claw-sama-app-x86_64-apple-darwin
             npm_dir: npm/darwin-x64
             binary_name: "Claw Sama.app"
             is_app_bundle: true
+            zip_name: "Claw Sama-x86_64-apple-darwin.app.zip"
     steps:
       - uses: actions/checkout@v6
 
@@ -148,14 +150,19 @@ jobs:
 
       - name: Place binary/bundle into sub-package
         run: |
+          echo "=== artifacts contents ==="
+          find artifacts -type f
           if [ "${{ matrix.is_app_bundle }}" = "true" ]; then
-            # .app is a directory — use cp -R
-            app_dir=$(find artifacts -name '${{ matrix.binary_name }}' -type d | head -1)
-            if [ -z "$app_dir" ]; then
-              echo "ERROR: ${{ matrix.binary_name }} not found in artifacts"
+            # Unzip .app bundle from the zip artifact
+            zip_file=$(find artifacts -name '*.app.zip' -type f | head -1)
+            if [ -z "$zip_file" ]; then
+              echo "ERROR: .app.zip not found in artifacts"
               exit 1
             fi
-            cp -R "$app_dir" "${{ matrix.npm_dir }}/${{ matrix.binary_name }}"
+            cd "${{ matrix.npm_dir }}"
+            unzip -o "../../$zip_file"
+            # Rename if needed (zip contains "Claw Sama.app" directory)
+            ls -la
           else
             bin=$(find artifacts -name '${{ matrix.binary_name }}' -type f | head -1)
             if [ -z "$bin" ]; then
@@ -164,8 +171,8 @@ jobs:
             fi
             cp "$bin" "${{ matrix.npm_dir }}/${{ matrix.binary_name }}"
             chmod +x "${{ matrix.npm_dir }}/${{ matrix.binary_name }}"
+            ls -la "${{ matrix.npm_dir }}/"
           fi
-          ls -la "${{ matrix.npm_dir }}/"
 
       - name: Publish platform package
         working-directory: ${{ matrix.npm_dir }}

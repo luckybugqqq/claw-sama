@@ -196,6 +196,7 @@ export class MotionController {
     const wasDancing = this._isDancing
     this._isDancing = false
     this._actionPlaying = false
+    this._actionGeneration++ // invalidate any in-flight playAction
 
     // Fresh mixer + idle
     this.startIdle()
@@ -205,6 +206,8 @@ export class MotionController {
 
   // ── Play a one-shot action ──────────────────────────────────────────────
 
+  private _actionGeneration = 0
+
   async playAction(name: string, hold = false) {
     console.log('[Motion] playAction:', name, { isDancing: this._isDancing, actionPlaying: this._actionPlaying })
     if (this._actionPlaying) return
@@ -213,13 +216,19 @@ export class MotionController {
     const preset = actionPresets[name]
     if (!preset) { console.warn('[Motion] unknown action:', name); return }
 
+    // Set lock BEFORE async load to prevent concurrent playAction calls
+    this._actionPlaying = true
+    const gen = ++this._actionGeneration
+
     console.log('[Motion] loading clip:', preset.type, preset.url)
     const clip = await this.loadClip(preset)
-    if (!clip) { console.warn('[Motion] clip load failed for:', name); return }
+
+    // Check if state was reset or another action started during await
+    if (gen !== this._actionGeneration) return
+    if (!clip) { console.warn('[Motion] clip load failed for:', name); this._actionPlaying = false; return }
     console.log('[Motion] playing:', name)
 
     this.clearTimers()
-    this._actionPlaying = true
 
     // Create fresh mixer for this action
     const mixer = this.createMixer()
@@ -237,9 +246,12 @@ export class MotionController {
       if (settled) return
       settled = true
       mixer.removeEventListener('finished', onFinished)
+      // Stale settle: another action or resetToIdle already took over
+      if (gen !== this._actionGeneration) return
       this.clearTimers()
       if (hold) {
         this.holdTimer = setTimeout(() => {
+          if (gen !== this._actionGeneration) return
           this._actionPlaying = false
           this.disableIK()
           this.startIdle()
@@ -332,6 +344,7 @@ export class MotionController {
     this.disableIK()
     this._isDancing = false
     this._actionPlaying = false
+    this._actionGeneration++
     this.destroyMixer()
   }
 
