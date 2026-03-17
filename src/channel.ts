@@ -807,7 +807,7 @@ export function createClawSamaPlugin() {
             return;
           }
           try {
-            const rt = getClawSamaRuntime();
+            const currentCfg = await getClawSamaRuntime().config.loadConfig();
             const lang = getPrefs().language ?? "zh";
             const prompt = lang === "zh" ? [
               "【必须执行】立即调用 read 工具读取以下图片文件（不读图直接输出将被丢弃）：",
@@ -910,29 +910,40 @@ export function createClawSamaPlugin() {
             ].join("\n");
 
             const personaSessionKey = `claw-sama-persona-gen-${Date.now()}`;
-            const result = await rt.subagent.run({
-              sessionKey: personaSessionKey,
-              message: prompt,
-              extraSystemPrompt,
-              idempotencyKey: `persona-gen-${Date.now()}`,
+            const msgCtx = channelRuntime.reply.finalizeInboundContext({
+              Body: prompt,
+              RawBody: prompt,
+              CommandBody: prompt,
+              From: `claw-sama:local`,
+              To: `claw-sama:local`,
+              SessionKey: personaSessionKey,
+              AccountId: DEFAULT_ACCOUNT_ID,
+              OriginatingChannel: CHANNEL_ID,
+              OriginatingTo: `claw-sama:local`,
+              ChatType: "direct",
+              SenderName: "User",
+              SenderId: "local",
+              Provider: CHANNEL_ID,
+              Surface: CHANNEL_ID,
+              ConversationLabel: "Claw Sama Persona",
+              Timestamp: Date.now(),
+              CommandAuthorized: true,
             });
-            const waitResult = await rt.subagent.waitForRun({ runId: result.runId, timeoutMs: 60_000 });
-            if (waitResult.status !== "ok") {
-              throw new Error(waitResult.error || `subagent ${waitResult.status}`);
-            }
-            const session = await rt.subagent.getSessionMessages({ sessionKey: personaSessionKey, limit: 5 });
+
             let rawText = "";
-            for (const msg of [...session.messages].reverse()) {
-              const m = msg as { role?: string; content?: unknown };
-              if (m.role === "assistant" || m.role === "model") {
-                if (typeof m.content === "string") {
-                  rawText = m.content;
-                } else if (Array.isArray(m.content)) {
-                  rawText = m.content.filter((b: any) => b.type === "text").map((b: any) => b.text).join("\n");
-                }
-                break;
-              }
-            }
+            await channelRuntime.reply.dispatchReplyWithBufferedBlockDispatcher({
+              ctx: msgCtx,
+              cfg: currentCfg,
+              extraSystemPrompt,
+              dispatcherOptions: {
+                deliver: async (payload: any) => {
+                  const text = payload?.text ?? payload?.body ?? "";
+                  if (text) rawText += text;
+                },
+                onDone: async () => {},
+              },
+            });
+
             let soul = "";
             let identity = "";
             try {
@@ -947,7 +958,7 @@ export function createClawSamaPlugin() {
             } catch {
               soul = rawText;
             }
-            jsonResponse(res, 200, { ok: true, soul, identity, runId: result.runId });
+            jsonResponse(res, 200, { ok: true, soul, identity });
           } catch (err) {
             log?.warn?.("claw-sama persona generate error: " + String(err));
             jsonResponse(res, 500, { error: String(err) });

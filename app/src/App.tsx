@@ -30,7 +30,7 @@ const emotionActionMap: Record<string, string> = {
   surprised: 'excited',
   angry: 'angry',
   awkward: 'playFingers',
-  sad: 'lookAway',
+  sad: 'shy',
   love: 'shy',
   flirty: 'shy',
   greeting: 'greeting',
@@ -171,7 +171,7 @@ export default function App() {
     const allActions = [
       'akimbo', 'playFingers', 'scratchHead', 'stretch',
       'happy', 'angry', 'greeting', 'excited', 'shy',
-      'point', 'lookAway', 'salute', 'angryPump',
+      'point', 'salute', 'angryPump',
     ]
     const IDLE_THRESHOLD_MS = 30_000
     const FIDGET_CHECK_MS = 15_000 // check every 15s, randomness inside
@@ -277,7 +277,7 @@ export default function App() {
       { emotion: 'angry', action: 'angryPump' },
       { emotion: 'surprised', action: 'excited' },
       { emotion: 'angry', action: 'point' },
-      { emotion: 'sad', action: 'lookAway' },
+      { emotion: 'sad', action: 'shy' },
     ],
     leg: [
       { emotion: 'surprised', action: 'stretch' },

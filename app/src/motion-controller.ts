@@ -42,7 +42,6 @@ export const actionPresets: Record<string, MotionPreset> = {
   excited:      { label: '兴奋',     type: 'fbx', url: '/excited.fbx' },
   shy:          { label: '害羞',     type: 'fbx', url: '/shy.fbx' },
   point:        { label: '指点',     type: 'fbx', url: '/point.fbx' },
-  lookAway:     { label: '叹气',     type: 'fbx', url: '/lookAway.fbx' },
   salute:       { label: '敬礼',     type: 'fbx', url: '/salute.fbx' },
   angryPump:    { label: '暴怒',     type: 'fbx', url: '/angryPump.fbx' },
 }
