@@ -80,6 +80,23 @@ export function updatePrefs(patch: Partial<ClawSamaPrefs>): ClawSamaPrefs {
   return prefs;
 }
 
+// ── Screen Observation Knowledge Base ──
+
+const SCREEN_KB = `\
+## 杀戮尖塔 / Slay the Spire
+- 卡牌roguelike游戏
+- 界面特征：卡牌手牌、地图路径选择、敌人血条、能量点数
+- 关键词：Strike, Defend, Ascension, Neow, 精英怪, 篝火
+
+## 仁王3 / Nioh 3
+- 动作RPG，暗黑风格日本战国背景
+- 界面特征：血条、精力条、妖力条、装备栏、暗黑写实画风
+- 关键词：武技、守护灵、落命、常暗、妖怪`;
+
+export function loadScreenKb(): string {
+  return SCREEN_KB;
+}
+
 // Runtime cache
 let _prefs = loadPrefs();
 

@@ -11,7 +11,7 @@ import { getClawSamaRuntime } from "./runtime.js";
 import { broadcastToVrm, addSseClient, removeSseClient, type VrmBroadcastPayload } from "./sse.js";
 import { stripThinking, stripActions, stripMarkdown, stripEmoji, stripForTts, splitSentences, VALID_EMOTIONS } from "./text-utils.js";
 import { edgeTts, qwenTts, registerAudioFile, getAudioFile } from "./tts.js";
-import { getPrefs, updatePrefs, setPrefs, EXT_DIR, workspaceRoot, openclawWorkspaceRoot } from "./prefs.js";
+import { getPrefs, updatePrefs, setPrefs, EXT_DIR, workspaceRoot, openclawWorkspaceRoot, loadScreenKb } from "./prefs.js";
 import type { ClawSamaPrefs } from "./prefs.js";
 import { existsSync, readFileSync, writeFileSync, appendFileSync, mkdirSync, readdirSync, statSync } from "node:fs";
 import { execFile } from "node:child_process";
@@ -1543,8 +1543,13 @@ export function createClawSamaPlugin() {
               isError: true,
             };
           }
+          let resultText = `Screenshot saved. Use the read tool to view: ${observePath}`;
+          const kb = loadScreenKb();
+          if (kb) {
+            resultText += `\n\nKnowledge base — the user may be running one of these programs, use this to help identify what's on screen:\n${kb}`;
+          }
           return {
-            content: [{ type: "text" as const, text: `Screenshot saved. Use the read tool to view: ${observePath}` }],
+            content: [{ type: "text" as const, text: resultText }],
           };
         },
       } as AnyAgentTool,

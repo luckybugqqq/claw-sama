@@ -125,6 +125,7 @@ export function SettingsPanel({
   const [customDances, setCustomDances] = useState<DanceItem[]>([])
   const [importingDance, setImportingDance] = useState(false)
 
+
   // Drag state
   const [panelPos, setPanelPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
   const dragRef = useRef<{ dragging: boolean; startX: number; startY: number; origX: number; origY: number }>({
@@ -436,6 +437,7 @@ export function SettingsPanel({
                       <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', width: 36, textAlign: 'right' }}>{screenObserveInterval}s</span>
                     </div>
                   </div>
+
                 </>
               )}
             </div>

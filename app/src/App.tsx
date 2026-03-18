@@ -14,7 +14,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window'
 import { listen } from '@tauri-apps/api/event'
 import { HistoryPanel } from './components/HistoryPanel'
 import { MoodIndicator } from './components/MoodIndicator'
-import { Menu, Pin, Move, RotateCcw, Rotate3D, EyeOff, Settings, Music } from 'lucide-react'
+import { Menu, Pin, Move, RotateCcw, Rotate3D, EyeOff, Settings, Music, RefreshCw } from 'lucide-react'
 
 const DEFAULT_MODEL = '/model1.vrm'
 const OPENCLAW_URL = 'http://127.0.0.1:18789'
@@ -260,6 +260,14 @@ export default function App() {
         e.preventDefault()
         setCollapsed((v) => !v)
       }
+      if (e.key === 'F4') {
+        e.preventDefault()
+        setSettingsOpen((v) => !v)
+      }
+      if (e.key === 'F5') {
+        e.preventDefault()
+        window.location.reload()
+      }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
@@ -429,9 +437,16 @@ export default function App() {
           <button
             onClick={() => setSettingsOpen(true)}
             style={btnStyle}
-            title={t('设置', 'Settings')}
+            title={t('设置 (F4)', 'Settings (F4)')}
           >
             <Settings size={16} />
+          </button>
+          <button
+            onClick={() => window.location.reload()}
+            style={btnStyle}
+            title={t('刷新 (F5)', 'Refresh (F5)')}
+          >
+            <RefreshCw size={16} />
           </button>
           <button
             onClick={() => getCurrentWindow().hide()}
@@ -494,13 +509,6 @@ export default function App() {
             title={t('拖动旋转视角', 'Drag to Rotate')}
           >
             <Rotate3D size={16} />
-          </button>
-          <button
-            onClick={() => { sceneRef.current?.reset(); setDancing(false) }}
-            style={btnStyle}
-            title={t('重置视角', 'Reset View')}
-          >
-            <RotateCcw size={16} />
           </button>
           <button
             onClick={() => {
