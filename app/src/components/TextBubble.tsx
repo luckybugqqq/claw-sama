@@ -224,6 +224,23 @@ export function TextBubble({ onMessage, enabled = true, ttsEnabled = true }: { o
   hideBubbleRef.current = hideBubble
   const thinkingRef = useRef(thinking)
   thinkingRef.current = thinking
+  const visibleRef = useRef(visible)
+  visibleRef.current = visible
+
+  // Watchdog: if bubble is stuck (no audio, no typewriter, no queued work), force-hide after 30s
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (!visibleRef.current) return
+      if (audioPlayingRef.current) return
+      if (typewriterRef.current !== null) return
+      if (audioQueueRef.current.size > 0) return
+      if (pendingSendFirstTtsRef.current.length > 0) return
+      if (timerRef.current !== null) return  // hide already scheduled
+      console.warn('[claw-sama] watchdog: bubble stuck, forcing hide')
+      hideBubbleRef.current()
+    }, 30_000)
+    return () => clearInterval(id)
+  }, [])
 
   // Stable handleMessage — never causes SSE reconnect
   const handleMessage = useCallback((msg: VrmMessage) => {
