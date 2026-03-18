@@ -65,7 +65,6 @@ const mixamoVRMRigMap: Record<string, VRMHumanBoneName> = {
 
 export async function loadMixamoAnimation(url: string, vrm: VRM): Promise<THREE.AnimationClip> {
   const loader = new FBXLoader()
-  console.log('[MixamoLoader] Loading FBX:', url)
   let asset: THREE.Group
   try {
     asset = await loader.loadAsync(url) as THREE.Group
@@ -73,9 +72,6 @@ export async function loadMixamoAnimation(url: string, vrm: VRM): Promise<THREE.
     console.error('[MixamoLoader] FBXLoader.loadAsync failed:', url, err)
     throw err
   }
-  console.log('[MixamoLoader] FBX loaded, animations:', asset.animations.length,
-    asset.animations.map(a => a.name))
-
   // Try 'mixamo.com' first, fall back to first available animation
   const clip = THREE.AnimationClip.findByName(asset.animations, 'mixamo.com')
     ?? asset.animations[0]

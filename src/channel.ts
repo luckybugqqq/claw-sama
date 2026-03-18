@@ -139,19 +139,14 @@ const mediaFileRegistry = new Map<string, string>();
 /** Resolve a local or remote media URL to a servable URL and broadcast it. */
 function broadcastMediaUrl(rawUrl: string | undefined): void {
   if (!rawUrl) return;
-  console.log("[claw-sama] broadcastMediaUrl raw:", rawUrl);
   let serveUrl = rawUrl;
   if (!rawUrl.startsWith("http")) {
     const filePath = path.isAbsolute(rawUrl) ? rawUrl : path.resolve(rawUrl);
-    if (!existsSync(filePath)) {
-      console.log("[claw-sama] media file not found:", filePath);
-      return;
-    }
+    if (!existsSync(filePath)) return;
     const id = `img-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     mediaFileRegistry.set(id, filePath);
     serveUrl = `${GATEWAY_URL}/plugins/claw-sama/media/${id}`;
   }
-  console.log("[claw-sama] broadcasting imageUrl:", serveUrl);
   broadcastToVrm({ imageUrl: serveUrl });
 }
 
@@ -212,23 +207,16 @@ class StreamingTtsTracker {
     this.sentencesSent = 1;
 
     if (stripForTts(firstSentence).length === 0) {
-      console.log("[claw-sama:tts-tracker] first sentence not TTS-worthy, skipping");
       return;
     }
 
     this.audioDispatched++;
-    console.log(`[claw-sama:tts-tracker] ★ FIRST sentence detected via onPartialReply: "${firstSentence}"`);
     this.dispatchFirstTts(firstSentence);
   }
 
   // ── Called from deliver callback on final block ──
   // accumulatedText is already up-to-date from processPartial calls.
   processFinal() {
-    console.log(
-      `[claw-sama:tts-tracker] processFinal: textLen=${this.accumulatedText.length}\n` +
-      `  text: ${this.accumulatedText}`,
-    );
-
     const allSentences = splitSentences(this.accumulatedText);
     const newSentences = allSentences.slice(this.sentencesSent);
     this.sentencesSent = allSentences.length;
@@ -238,13 +226,11 @@ class StreamingTtsTracker {
     let subsequentStart = 0;
     if (this.audioDispatched === 0) {
       if (ttsWorthy.length === 0) {
-        console.log("[claw-sama:tts-tracker] no TTS-worthy sentences, emitting text only");
         this.onSendFirstTts?.(this.accumulatedText, undefined);
         this.resolveFirstSent();
         this.firstSentPromise.then(() => { this.onReplyDone?.(); });
         return;
       }
-      console.log(`[claw-sama:tts-tracker] ★ FIRST sentence detected in final: "${ttsWorthy[0]}"`);
       this.audioDispatched++;
       subsequentStart = 1;
       this.dispatchFirstTts(ttsWorthy[0]);
@@ -253,7 +239,6 @@ class StreamingTtsTracker {
     // Subsequent sentences: generate TTS in parallel, send in order
     const subsequent = ttsWorthy.slice(subsequentStart);
     if (subsequent.length === 0) {
-      console.log(`[claw-sama:tts-tracker] final done: audioDispatched=${this.audioDispatched}`);
       this.firstSentPromise.then(() => { this.onReplyDone?.(); });
       return;
     }
@@ -269,13 +254,10 @@ class StreamingTtsTracker {
       const idx = startIdx + i;
       const p = ttsPromises[i];
       chain = chain.then(() => p).then((audioUrl) => {
-        console.log(`[claw-sama:tts-tracker] >>> appendSentence idx=${idx} text="${sentence.slice(0, 80)}" audio=${audioUrl ? "yes" : "no"}`);
         this.onAppendSentence?.(sentence, audioUrl, idx);
       });
     }
     chain.then(() => { this.onReplyDone?.(); });
-
-    console.log(`[claw-sama:tts-tracker] final done: audioDispatched=${this.audioDispatched}`);
   }
 
   private dispatchFirstTts(sentence: string) {
@@ -287,12 +269,9 @@ class StreamingTtsTracker {
       ),
     ])
       .then((url) => {
-        if (url) {
-          console.log(`[claw-sama:tts-tracker] first TTS ready: ${url.slice(-30)}`);
-        } else {
+        if (!url) {
           console.warn("[claw-sama:tts-tracker] first TTS failed or timed out");
         }
-        console.log(`[claw-sama:tts-tracker] >>> sendFirstTts: text="${sentence.slice(0, 80)}" audio=${url ? "yes" : "no"}`);
         this.onSendFirstTts?.(sentence, url);
         this.resolveFirstSent();
       })
@@ -313,7 +292,6 @@ async function generateTtsUrl(text: string, log?: { warn: (msg: string) => void 
   if (!ttsText || /^[。！？；.!?;、，,…\s]+$/.test(ttsText)) return undefined;
 
   const provider = (prefs.provider === "qwen" && prefs.qwenKey) ? "qwen" : "edge";
-  console.log(`[claw-sama] TTS request: provider=${provider} text="${ttsText.slice(0, 60)}${ttsText.length > 60 ? "..." : ""}"`);
 
   try {
     let result: { success: boolean; audioPath?: string; error?: string };
@@ -428,12 +406,10 @@ export function createClawSamaPlugin() {
       deliveryMode: "gateway" as const,
       textChunkLimit: 4000,
       resolveTarget: ({ to }: any) => {
-        console.log("[claw-sama] resolveTarget called:", { to });
         return { ok: true, to: to ?? "claw-sama:local" };
       },
 
       sendText: async ({ to, text }: any) => {
-        console.log("[claw-sama] sendText called:", { to, textLen: text?.length });
         // Outbound messages from other channels or /send — broadcast to VRM
         const cleaned = stripActions(text.replace(/<think>[\s\S]*?<\/think>/g, "")).trim();
         if (cleaned) {
@@ -451,7 +427,6 @@ export function createClawSamaPlugin() {
       },
 
       sendMedia: async ({ to, text, mediaUrl }: any) => {
-        console.log("[claw-sama] sendMedia called:", { to, mediaUrl, textLen: text?.length });
         // Only support image files
         const VALID_IMAGE_EXTS = [".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp"];
         const ext = path.extname(mediaUrl || "").toLowerCase();
@@ -495,19 +470,16 @@ export function createClawSamaPlugin() {
           const tracker = new StreamingTtsTracker(
             log,
             (text, audioUrl) => {
-              console.log(`[claw-sama:${label}] sendFirstTts: text="${text.slice(0, 80)}" audio=${audioUrl ? "yes" : "no"}`);
               const payload: VrmBroadcastPayload = { text, sendFirstTts: true };
               if (audioUrl) { payload.audioUrl = audioUrl; payload.audioIndex = 0; }
               broadcastToVrm(payload);
             },
             (text, audioUrl, index) => {
-              console.log(`[claw-sama:${label}] appendSentence: idx=${index} text="${text.slice(0, 80)}" audio=${audioUrl ? "yes" : "no"}`);
               const payload: VrmBroadcastPayload = { text, appendText: true, audioIndex: index };
               if (audioUrl) payload.audioUrl = audioUrl;
               broadcastToVrm(payload);
             },
             () => {
-              console.log(`[claw-sama:${label}] replyDone`);
               broadcastToVrm({ replyDone: true });
             },
           );
@@ -525,11 +497,10 @@ export function createClawSamaPlugin() {
             dispatcherOptions: {
               deliver: async (payload: any, info: { kind: string }) => {
                 const rawMediaUrl = payload?.mediaUrl ?? (payload?.mediaUrls?.length ? payload.mediaUrls[0] : undefined);
-                console.log(`[claw-sama:${label}:deliver] kind=${info.kind} media=${rawMediaUrl ? "yes" : "no"}`);
                 if (rawMediaUrl) broadcastMediaUrl(rawMediaUrl);
                 if (info.kind === "final") tracker.processFinal();
               },
-              onReplyStart: onReplyStart ?? (() => { console.log(`[claw-sama:${label}] reply started`); }),
+              onReplyStart: onReplyStart ?? (() => {}),
             },
           });
         }
@@ -621,8 +592,6 @@ export function createClawSamaPlugin() {
           const message = body.message;
           if (!message) { jsonResponse(res, 400, { error: "message required" }); return; }
 
-          console.log("[claw-sama] inbound message:", message.slice(0, 200));
-
           // Broadcast thinking state immediately
           broadcastToVrm({ emotion: "think", emotionIntensity: 0.7 });
 
@@ -655,7 +624,6 @@ export function createClawSamaPlugin() {
               ctx: msgCtx,
               cfg: currentCfg,
               onReplyStart: () => {
-                console.log("[claw-sama:chat] reply started");
                 log?.info?.("Claw Sama: agent reply started");
               },
             });
@@ -707,7 +675,6 @@ export function createClawSamaPlugin() {
               ctx: msgCtx,
               cfg: currentCfg,
               onReplyStart: () => {
-                console.log("[claw-sama:touch] reply started");
                 log?.info?.("Claw Sama: touch reply started (region: " + region + ")");
               },
             });
@@ -1081,7 +1048,6 @@ export function createClawSamaPlugin() {
               cfg: currentCfg,
               stripText: (t) => stripActions(stripThinking(t)),
               onReplyStart: () => {
-                console.log("[claw-sama:screen] reply started");
                 log?.info?.("Claw Sama: screen observe reply started");
               },
             });
@@ -1409,7 +1375,6 @@ export function createClawSamaPlugin() {
               ctx: msgCtx,
               cfg: currentCfg,
               onReplyStart: () => {
-                console.log("[claw-sama:clear] reply started");
                 log?.info?.("Claw Sama: new session reply started");
               },
             });

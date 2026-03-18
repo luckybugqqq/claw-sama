@@ -23,7 +23,7 @@
 
 <p align="center">
   <a href="https://www.bilibili.com/video/BV1bEw6zJEuU">
-    <img src="img/banner.png" alt="Watch on Bilibili" width="80%" />
+    <img src="img/display.gif" alt="Watch on Bilibili" width="80%" />
   </a>
 </p>
 

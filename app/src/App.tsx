@@ -148,7 +148,6 @@ export default function App() {
   const handleVrmMessage: OnVrmMessage = useCallback((msg) => {
     if (msg.emotion && sceneRef.current) {
       const action = emotionActionMap[msg.emotion]
-      console.log('[App] emotion:', msg.emotion, '→ action:', action)
       if (msg.text) {
         // 回复消息：表情和动作同时触发（文字出现1s后由TextBubble延迟调用）
         sceneRef.current.setEmotionWithReset(msg.emotion, msg.emotionDuration ?? 5000, msg.emotionIntensity)

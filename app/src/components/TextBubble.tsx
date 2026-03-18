@@ -121,7 +121,6 @@ export function TextBubble({ onMessage, enabled = true, ttsEnabled = true }: { o
       // Check pending sendFirstTts queue before hiding
       if (pendingSendFirstTtsRef.current.length > 0) {
         const next = pendingSendFirstTtsRef.current.shift()!
-        console.log(`[claw-sama] draining pending sendFirstTts queue (${pendingSendFirstTtsRef.current.length} remaining)`)
         handleMessageRef.current(next)
         // Process any buffered appendText messages for this reply
         const appends = pendingAppendRef.current.splice(0)
@@ -308,11 +307,9 @@ export function TextBubble({ onMessage, enabled = true, ttsEnabled = true }: { o
     if (msg.sendFirstTts) {
       const busy = audioPlayingRef.current || typewriterRef.current !== null
       if (busy) {
-        console.log(`[claw-sama] sendFirstTts queued — previous reply still playing (queue size: ${pendingSendFirstTtsRef.current.length + 1})`)
         pendingSendFirstTtsRef.current.push(msg)
         return
       }
-      console.log('[claw-sama] sendFirstTts received — resetting TTS state')
       replyDoneRef.current = false
       const lipSync = LipSync.getInstance()
       lipSync.stopAudio()
@@ -387,7 +384,6 @@ export function TextBubble({ onMessage, enabled = true, ttsEnabled = true }: { o
     es.onmessage = (e) => {
       try {
         const data = JSON.parse(e.data)
-        console.log('[claw-sama] SSE message:', data.imageUrl ? `imageUrl=${data.imageUrl}` : '', data.text ? `text=${data.text.slice(0, 50)}...` : '', data.clearText ? 'clearText' : '', data.sendFirstTts ? 'sendFirstTts' : '', data.appendText ? `appendText idx=${data.audioIndex}` : '', data.replyDone ? 'replyDone' : '', data.audioUrl ? `audio=${data.audioIndex}` : '')
         if (data.clearText) {
           if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null }
           if (typewriterRef.current) { clearInterval(typewriterRef.current); typewriterRef.current = null }

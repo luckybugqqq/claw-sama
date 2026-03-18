@@ -321,7 +321,6 @@ export const VRMScene = forwardRef<VRMSceneHandle, VRMSceneProps>(function VRMSc
 
         scene.add(loadedVrm.scene)
         vrm = loadedVrm
-        console.log('VRM loaded')
 
         // ── Compute camera from model bounds (airi style) ───────────────────
         const box = new THREE.Box3().setFromObject(loadedVrm.scene)
@@ -425,10 +424,7 @@ export const VRMScene = forwardRef<VRMSceneHandle, VRMSceneProps>(function VRMSc
         // Delay slightly so the first frame is rendered
         setTimeout(() => onModelLoadedRef.current?.(), 500)
       },
-      (progress) => {
-        const pct = ((progress.loaded / (progress.total || 1)) * 100).toFixed(1)
-        console.log(`Loading VRM: ${pct}%`)
-      },
+      () => {},
       (err) => {
         console.error('Failed to load VRM:', err)
       },

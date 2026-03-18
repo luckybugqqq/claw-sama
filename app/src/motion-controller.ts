@@ -203,7 +203,6 @@ export class MotionController {
   private _actionGeneration = 0
 
   async playAction(name: string, hold = false) {
-    console.log('[Motion] playAction:', name, { isDancing: this._isDancing, actionPlaying: this._actionPlaying })
     if (this._actionPlaying) return
     if (this._isDancing) return
 
@@ -214,14 +213,12 @@ export class MotionController {
     this._actionPlaying = true
     const gen = ++this._actionGeneration
 
-    console.log('[Motion] loading clip:', preset.type, preset.url)
     const clip = await this.loadClip(preset)
 
     // Check if state was reset or another action started during await
     if (gen !== this._actionGeneration) return
     if (!clip) { console.warn('[Motion] clip load failed for:', name); this._actionPlaying = false; return }
     if (!this.mixer) { this._actionPlaying = false; return }
-    console.log('[Motion] playing:', name)
 
     this.clearTimers()
 
