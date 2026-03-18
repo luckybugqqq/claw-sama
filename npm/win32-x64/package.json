@@ -1,6 +1,6 @@
 {
   "name": "@luckybugqqq/claw-sama-win32-x64",
-  "version": "0.6.5",
+  "version": "0.6.8",
   "description": "Claw Sama binary for Windows x64",
   "license": "MIT",
   "os": ["win32"],
