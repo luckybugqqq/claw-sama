@@ -51,16 +51,16 @@ function heartPath(ctx: CanvasRenderingContext2D, cx: number, cy: number, size: 
   const r = size * 0.45
   const topY = cy - r * 0.4
   ctx.beginPath()
-  // Bottom tip
-  ctx.moveTo(cx, cy + r)
+  // Bottom tip (rounded)
+  ctx.moveTo(cx, cy + r * 0.85)
   // Left curve
-  ctx.bezierCurveTo(cx - r * 0.2, cy + r * 0.6, cx - r * 1.1, cy + r * 0.1, cx - r, topY)
+  ctx.bezierCurveTo(cx - r * 0.5, cy + r * 0.6, cx - r * 1.1, cy + r * 0.1, cx - r, topY)
   // Left bump (arc)
   ctx.arc(cx - r * 0.5, topY, r * 0.5, Math.PI, 0, false)
   // Right bump (arc)
   ctx.arc(cx + r * 0.5, topY, r * 0.5, Math.PI, 0, false)
   // Right curve
-  ctx.bezierCurveTo(cx + r * 1.1, cy + r * 0.1, cx + r * 0.2, cy + r * 0.6, cx, cy + r)
+  ctx.bezierCurveTo(cx + r * 1.1, cy + r * 0.1, cx + r * 0.5, cy + r * 0.6, cx, cy + r * 0.85)
   ctx.closePath()
 }
 
@@ -190,8 +190,8 @@ export function MoodIndicator({ uiAlign = 'right' }: MoodIndicatorProps) {
   const [bubbles, setBubbles] = useState<MoodBubble[]>([])
   const [visible, setVisible] = useState(false)
   const [dragging, setDragging] = useState(false)
-  const defaultX = (align: string) => align === 'left' ? window.innerWidth - 8 - BAR_CANVAS_W : 8
-  const [pos, setPos] = useState<{ x: number; y: number }>({ x: defaultX(uiAlign), y: 8 })
+  const defaultX = (align: string) => align === 'left' ? window.innerWidth - 20 - BAR_CANVAS_W : 20
+  const [pos, setPos] = useState<{ x: number; y: number }>({ x: defaultX(uiAlign), y: 20 })
   const [userDragged, setUserDragged] = useState(false)
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)

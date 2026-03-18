@@ -168,62 +168,139 @@ function waitUntilAbort(signal?: AbortSignal, onAbort?: () => void): Promise<voi
 }
 
 /**
- * Streaming TTS tracker — generates TTS for complete sentences as they arrive
- * during streaming, without waiting for the final result.
+ * Streaming TTS tracker — sends each sentence to the frontend as soon as its
+ * TTS is ready.  First sentence fires immediately (with timeout fallback).
+ * Subsequent sentences are generated in parallel and sent in order after the
+ * first has been delivered.
  */
 class StreamingTtsTracker {
-  private sentencesSent = 0;     // how many sentences already checked (in accumulated text)
-  private audioDispatched = 0;   // contiguous audio index counter (only for TTS-worthy sentences)
-  private accumulatedText = "";  // full text accumulated across all blocks
+  private sentencesSent = 0;
+  private audioDispatched = 0;
+  private accumulatedText = "";
 
-  constructor(private log?: { warn: (msg: string) => void }) {}
+  private static readonly FIRST_TTS_TIMEOUT_MS = 5000;
+  // IMPORTANT: During streaming, ASCII '.' is NOT treated as a sentence ender
+  // because '...' (ellipsis) arrives one dot at a time and would cause false splits.
+  private static readonly STREAMING_SENTENCE_END_RE = /[。！？；!?;~]$/;
 
-  /**
-   * Call on each deliver (streaming block or final).
-   * `blockText` is the text from the current block (NOT cumulative).
-   * The tracker accumulates internally and sends TTS for newly completed sentences.
-   */
-  process(blockText: string, isFinal: boolean) {
-    if (isFinal) {
-      // Final block replaces accumulated text (it contains the complete reply)
-      this.accumulatedText = blockText;
-    } else {
-      // Streaming block — append to accumulated text
-      this.accumulatedText += blockText;
-    }
+  // Resolves when the first sentence has been broadcast — subsequent sentences
+  // chain off this to guarantee ordered delivery.
+  private resolveFirstSent!: () => void;
+  private firstSentPromise = new Promise<void>((r) => { this.resolveFirstSent = r; });
+
+  constructor(
+    private log?: { warn: (msg: string) => void; info?: (msg: string) => void },
+    private onSendFirstTts?: (text: string, audioUrl: string | undefined) => void,
+    private onAppendSentence?: (text: string, audioUrl: string | undefined, index: number) => void,
+    private onReplyDone?: () => void,
+  ) {}
+
+  // ── Called from replyOptions.onPartialReply (every streaming chunk) ──
+  processPartial(partialText: string) {
+    this.accumulatedText = partialText;
+
+    if (this.audioDispatched > 0) return;
 
     const allSentences = splitSentences(this.accumulatedText);
-
-    // During streaming: only send TTS for sentences that are "complete"
-    // If the last sentence ends with sentence-ending punctuation, treat it as complete too
-    const SENTENCE_END_RE = /[。！？；.!?;]$/;
     const lastSentence = allSentences[allSentences.length - 1] ?? "";
-    const lastIsComplete = isFinal || SENTENCE_END_RE.test(lastSentence.trim());
+    const lastIsComplete = StreamingTtsTracker.STREAMING_SENTENCE_END_RE.test(lastSentence.trim());
     const completeSentences = lastIsComplete ? allSentences : allSentences.slice(0, -1);
-    const newSentences = completeSentences.slice(this.sentencesSent);
-    this.sentencesSent = completeSentences.length;
 
-    if (newSentences.length === 0) return;
+    if (completeSentences.length === 0) return;
 
-    // Filter out sentences that produce empty TTS text (e.g. emoji-only, whitespace)
-    // to avoid holes in the audio index sequence
+    const firstSentence = completeSentences[0];
+    this.sentencesSent = 1;
+
+    if (stripForTts(firstSentence).length === 0) {
+      console.log("[claw-sama:tts-tracker] first sentence not TTS-worthy, skipping");
+      return;
+    }
+
+    this.audioDispatched++;
+    console.log(`[claw-sama:tts-tracker] ★ FIRST sentence detected via onPartialReply: "${firstSentence}"`);
+    this.dispatchFirstTts(firstSentence);
+  }
+
+  // ── Called from deliver callback on final block ──
+  // accumulatedText is already up-to-date from processPartial calls.
+  processFinal() {
+    console.log(
+      `[claw-sama:tts-tracker] processFinal: textLen=${this.accumulatedText.length}\n` +
+      `  text: ${this.accumulatedText}`,
+    );
+
+    const allSentences = splitSentences(this.accumulatedText);
+    const newSentences = allSentences.slice(this.sentencesSent);
+    this.sentencesSent = allSentences.length;
     const ttsWorthy = newSentences.filter((s) => stripForTts(s).length > 0);
-    if (ttsWorthy.length === 0) return;
 
-    // On final, compute total TTS-worthy sentences across the entire text
-    const totalAudio = isFinal
-      ? allSentences.filter((s) => stripForTts(s).length > 0).length
-      : 0;
+    // Handle first sentence if not detected during streaming
+    let subsequentStart = 0;
+    if (this.audioDispatched === 0) {
+      if (ttsWorthy.length === 0) {
+        console.log("[claw-sama:tts-tracker] no TTS-worthy sentences, emitting text only");
+        this.onSendFirstTts?.(this.accumulatedText, undefined);
+        this.resolveFirstSent();
+        this.firstSentPromise.then(() => { this.onReplyDone?.(); });
+        return;
+      }
+      console.log(`[claw-sama:tts-tracker] ★ FIRST sentence detected in final: "${ttsWorthy[0]}"`);
+      this.audioDispatched++;
+      subsequentStart = 1;
+      this.dispatchFirstTts(ttsWorthy[0]);
+    }
 
-    for (const sentence of ttsWorthy) {
-      const idx = this.audioDispatched++;
-      // During streaming, audioTotal=0 signals "unknown total" to the frontend;
-      // the final call will broadcast the correct total.
-      const total = isFinal ? totalAudio : 0;
-      generateTtsUrl(sentence, this.log).then((audioUrl) => {
-        if (audioUrl) broadcastToVrm({ audioUrl, audioIndex: idx, audioTotal: total });
+    // Subsequent sentences: generate TTS in parallel, send in order
+    const subsequent = ttsWorthy.slice(subsequentStart);
+    if (subsequent.length === 0) {
+      console.log(`[claw-sama:tts-tracker] final done: audioDispatched=${this.audioDispatched}`);
+      this.firstSentPromise.then(() => { this.onReplyDone?.(); });
+      return;
+    }
+
+    const startIdx = this.audioDispatched;
+    const ttsPromises = subsequent.map((s) => generateTtsUrl(s, this.log));
+    this.audioDispatched += subsequent.length;
+
+    // Chain sends off firstSentPromise so sentence order is guaranteed
+    let chain = this.firstSentPromise;
+    for (let i = 0; i < subsequent.length; i++) {
+      const sentence = subsequent[i];
+      const idx = startIdx + i;
+      const p = ttsPromises[i];
+      chain = chain.then(() => p).then((audioUrl) => {
+        console.log(`[claw-sama:tts-tracker] >>> appendSentence idx=${idx} text="${sentence.slice(0, 80)}" audio=${audioUrl ? "yes" : "no"}`);
+        this.onAppendSentence?.(sentence, audioUrl, idx);
       });
     }
+    chain.then(() => { this.onReplyDone?.(); });
+
+    console.log(`[claw-sama:tts-tracker] final done: audioDispatched=${this.audioDispatched}`);
+  }
+
+  private dispatchFirstTts(sentence: string) {
+    const ttsPromise = generateTtsUrl(sentence, this.log);
+    Promise.race([
+      ttsPromise,
+      new Promise<undefined>((r) =>
+        setTimeout(() => r(undefined), StreamingTtsTracker.FIRST_TTS_TIMEOUT_MS),
+      ),
+    ])
+      .then((url) => {
+        if (url) {
+          console.log(`[claw-sama:tts-tracker] first TTS ready: ${url.slice(-30)}`);
+        } else {
+          console.warn("[claw-sama:tts-tracker] first TTS failed or timed out");
+        }
+        console.log(`[claw-sama:tts-tracker] >>> sendFirstTts: text="${sentence.slice(0, 80)}" audio=${url ? "yes" : "no"}`);
+        this.onSendFirstTts?.(sentence, url);
+        this.resolveFirstSent();
+      })
+      .catch((err) => {
+        console.warn(`[claw-sama:tts-tracker] first TTS error: ${err}`);
+        this.onSendFirstTts?.(sentence, undefined);
+        this.resolveFirstSent();
+      });
   }
 }
 
@@ -405,6 +482,58 @@ export function createClawSamaPlugin() {
 
         log?.info?.("Starting Claw Sama channel");
 
+        // ── Shared TTS dispatch helper ──
+        async function dispatchWithTts(opts: {
+          label: string;
+          ctx: any;
+          cfg: any;
+          onReplyStart?: () => void;
+          stripText?: (text: string) => string;
+        }): Promise<void> {
+          const { label, ctx: dispatchCtx, cfg: dispatchCfg, onReplyStart, stripText } = opts;
+          const clean = stripText ?? ((t: string) => stripActions(t.replace(/<think>[\s\S]*?<\/think>/g, "")).trim());
+          const tracker = new StreamingTtsTracker(
+            log,
+            (text, audioUrl) => {
+              console.log(`[claw-sama:${label}] sendFirstTts: text="${text.slice(0, 80)}" audio=${audioUrl ? "yes" : "no"}`);
+              const payload: VrmBroadcastPayload = { text, sendFirstTts: true };
+              if (audioUrl) { payload.audioUrl = audioUrl; payload.audioIndex = 0; }
+              broadcastToVrm(payload);
+            },
+            (text, audioUrl, index) => {
+              console.log(`[claw-sama:${label}] appendSentence: idx=${index} text="${text.slice(0, 80)}" audio=${audioUrl ? "yes" : "no"}`);
+              const payload: VrmBroadcastPayload = { text, appendText: true, audioIndex: index };
+              if (audioUrl) payload.audioUrl = audioUrl;
+              broadcastToVrm(payload);
+            },
+            () => {
+              console.log(`[claw-sama:${label}] replyDone`);
+              broadcastToVrm({ replyDone: true });
+            },
+          );
+          await channelRuntime.reply.dispatchReplyWithBufferedBlockDispatcher({
+            ctx: dispatchCtx,
+            cfg: dispatchCfg,
+            replyOptions: {
+              onPartialReply: (payload: any) => {
+                const text = payload?.text ?? "";
+                if (!text) return;
+                const cleaned = clean(text);
+                if (cleaned) tracker.processPartial(cleaned);
+              },
+            },
+            dispatcherOptions: {
+              deliver: async (payload: any, info: { kind: string }) => {
+                const rawMediaUrl = payload?.mediaUrl ?? (payload?.mediaUrls?.length ? payload.mediaUrls[0] : undefined);
+                console.log(`[claw-sama:${label}:deliver] kind=${info.kind} media=${rawMediaUrl ? "yes" : "no"}`);
+                if (rawMediaUrl) broadcastMediaUrl(rawMediaUrl);
+                if (info.kind === "final") tracker.processFinal();
+              },
+              onReplyStart: onReplyStart ?? (() => { console.log(`[claw-sama:${label}] reply started`); }),
+            },
+          });
+        }
+
         // ── Populate route handlers (actual routes are registered via api.registerHttpRoute in index.ts) ──
 
         function registerRoute(
@@ -521,52 +650,13 @@ export function createClawSamaPlugin() {
               CommandAuthorized: true,
             });
 
-            // Track accumulated text for streaming
-            let fullTextBuffer = "";
-            const ttsTracker = new StreamingTtsTracker(log);
-
-            // Dispatch reply via the standard buffered block dispatcher
-            await channelRuntime.reply.dispatchReplyWithBufferedBlockDispatcher({
+            await dispatchWithTts({
+              label: "chat",
               ctx: msgCtx,
               cfg: currentCfg,
-              dispatcherOptions: {
-                deliver: async (payload: any, info: { kind: string }) => {
-                  // Check for media
-                  const rawMediaUrl = payload?.mediaUrl ?? (payload?.mediaUrls?.length ? payload.mediaUrls[0] : undefined);
-                  console.log("[claw-sama] deliver payload:", JSON.stringify({ text: payload?.text?.slice(0, 200), mediaUrl: payload?.mediaUrl, mediaUrls: payload?.mediaUrls }));
-
-                  const text = payload?.text ?? payload?.body ?? "";
-                  if (!text && !rawMediaUrl) return;
-
-                  // Broadcast media-only if no text
-                  if (!text && rawMediaUrl) {
-                    broadcastMediaUrl(rawMediaUrl);
-                    return;
-                  }
-
-                  // Broadcast media alongside text if both present
-                  if (rawMediaUrl) {
-                    broadcastMediaUrl(rawMediaUrl);
-                  }
-
-                  const cleaned = stripActions(text.replace(/<think>[\s\S]*?<\/think>/g, "")).trim();
-                  if (!cleaned) return;
-
-                  const isFinal = info.kind === "final";
-                  fullTextBuffer = cleaned;
-
-                  // Phase 1: broadcast text immediately (zero latency)
-                  broadcastToVrm({
-                    text: cleaned,
-                    streaming: !isFinal,
-                  });
-
-                  // Phase 2: streaming TTS — generate for complete sentences as they arrive
-                  ttsTracker.process(cleaned, isFinal);
-                },
-                onReplyStart: () => {
-                  log?.info?.("Claw Sama: agent reply started");
-                },
+              onReplyStart: () => {
+                console.log("[claw-sama:chat] reply started");
+                log?.info?.("Claw Sama: agent reply started");
               },
             });
 
@@ -612,45 +702,13 @@ export function createClawSamaPlugin() {
               CommandAuthorized: true,
             });
 
-            const ttsTracker2 = new StreamingTtsTracker(log);
-            await channelRuntime.reply.dispatchReplyWithBufferedBlockDispatcher({
+            await dispatchWithTts({
+              label: "touch",
               ctx: msgCtx,
               cfg: currentCfg,
-              dispatcherOptions: {
-                deliver: async (payload: any, info: { kind: string }) => {
-                  // Check for media
-                  const rawMediaUrl = payload?.mediaUrl ?? (payload?.mediaUrls?.length ? payload.mediaUrls[0] : undefined);
-                  console.log("[claw-sama] deliver payload:", JSON.stringify({ text: payload?.text?.slice(0, 200), mediaUrl: payload?.mediaUrl, mediaUrls: payload?.mediaUrls }));
-
-                  const text = payload?.text ?? payload?.body ?? "";
-                  if (!text && !rawMediaUrl) return;
-
-                  // Broadcast media-only if no text
-                  if (!text && rawMediaUrl) {
-                    broadcastMediaUrl(rawMediaUrl);
-                    return;
-                  }
-
-                  // Broadcast media alongside text if both present
-                  if (rawMediaUrl) {
-                    broadcastMediaUrl(rawMediaUrl);
-                  }
-
-                  const cleaned = stripActions(text.replace(/<think>[\s\S]*?<\/think>/g, "")).trim();
-                  if (!cleaned) return;
-
-                  const isFinal = info.kind === "final";
-
-                  broadcastToVrm({
-                    text: cleaned,
-                    streaming: !isFinal,
-                  });
-
-                  ttsTracker2.process(cleaned, isFinal);
-                },
-                onReplyStart: () => {
-                  log?.info?.("Claw Sama: touch reply started (region: " + region + ")");
-                },
+              onReplyStart: () => {
+                console.log("[claw-sama:touch] reply started");
+                log?.info?.("Claw Sama: touch reply started (region: " + region + ")");
               },
             });
 
@@ -1017,28 +1075,14 @@ export function createClawSamaPlugin() {
               CommandAuthorized: true,
             });
 
-            let fullTextBuffer = "";
-            const ttsTracker3 = new StreamingTtsTracker(log);
-            await channelRuntime.reply.dispatchReplyWithBufferedBlockDispatcher({
+            await dispatchWithTts({
+              label: "screen",
               ctx: msgCtx,
               cfg: currentCfg,
-              dispatcherOptions: {
-                deliver: async (payload: any, info: { kind: string }) => {
-                  const rawMediaUrl = payload?.mediaUrl ?? (payload?.mediaUrls?.length ? payload.mediaUrls[0] : undefined);
-                  const text = payload?.text ?? payload?.body ?? "";
-                  if (!text && !rawMediaUrl) return;
-
-                  if (!text && rawMediaUrl) { broadcastMediaUrl(rawMediaUrl); return; }
-                  if (rawMediaUrl) broadcastMediaUrl(rawMediaUrl);
-
-                  const cleaned = stripActions(stripThinking(text));
-                  if (!cleaned) return;
-                  const isFinal = info.kind === "final";
-                  fullTextBuffer = cleaned;
-                  broadcastToVrm({ text: cleaned, streaming: !isFinal });
-                  ttsTracker3.process(cleaned, isFinal);
-                },
-                onReplyStart: () => { log?.info?.("Claw Sama: screen observe reply started"); },
+              stripText: (t) => stripActions(stripThinking(t)),
+              onReplyStart: () => {
+                console.log("[claw-sama:screen] reply started");
+                log?.info?.("Claw Sama: screen observe reply started");
               },
             });
 
@@ -1360,45 +1404,13 @@ export function createClawSamaPlugin() {
               CommandAuthorized: true,
             });
 
-            const ttsTracker4 = new StreamingTtsTracker(log);
-            await channelRuntime.reply.dispatchReplyWithBufferedBlockDispatcher({
+            await dispatchWithTts({
+              label: "clear",
               ctx: msgCtx,
               cfg: currentCfg,
-              dispatcherOptions: {
-                deliver: async (payload: any, info: { kind: string }) => {
-                  // Check for media
-                  const rawMediaUrl = payload?.mediaUrl ?? (payload?.mediaUrls?.length ? payload.mediaUrls[0] : undefined);
-                  console.log("[claw-sama] deliver payload:", JSON.stringify({ text: payload?.text?.slice(0, 200), mediaUrl: payload?.mediaUrl, mediaUrls: payload?.mediaUrls }));
-
-                  const text = payload?.text ?? payload?.body ?? "";
-                  if (!text && !rawMediaUrl) return;
-
-                  // Broadcast media-only if no text
-                  if (!text && rawMediaUrl) {
-                    broadcastMediaUrl(rawMediaUrl);
-                    return;
-                  }
-
-                  // Broadcast media alongside text if both present
-                  if (rawMediaUrl) {
-                    broadcastMediaUrl(rawMediaUrl);
-                  }
-
-                  const cleaned = stripActions(text.replace(/<think>[\s\S]*?<\/think>/g, "")).trim();
-                  if (!cleaned) return;
-
-                  const isFinal = info.kind === "final";
-
-                  broadcastToVrm({
-                    text: cleaned,
-                    streaming: !isFinal,
-                  });
-
-                  ttsTracker4.process(cleaned, isFinal);
-                },
-                onReplyStart: () => {
-                  log?.info?.("Claw Sama: new session reply started");
-                },
+              onReplyStart: () => {
+                console.log("[claw-sama:clear] reply started");
+                log?.info?.("Claw Sama: new session reply started");
               },
             });
 

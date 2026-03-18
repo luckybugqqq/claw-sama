@@ -90,10 +90,26 @@ export function stripForTts(text: string): string {
 /**
  * Split text into sentences for incremental TTS.
  * Splits on Chinese/Japanese sentence-ending punctuation and common English punctuation.
+ * Ellipsis patterns (... / …… / …) are protected and NOT treated as sentence boundaries.
  */
 export function splitSentences(text: string): string[] {
-  const parts = text.split(/(?<=[。！？；\n.!?;])\s*/);
+  // Protect ellipsis patterns from being treated as sentence-ending periods
+  const ellipsisMap: string[] = [];
+  const safeText = text.replace(/\.{2,}|…+/g, (match) => {
+    const idx = ellipsisMap.length;
+    ellipsisMap.push(match);
+    return `\x00E${idx}\x00`;
+  });
+
+  const parts = safeText.split(/(?<=[。！？；\n.!?;~])\s*/);
   return parts
-    .map((s) => s.trim())
-    .filter((s) => s && !/^[。！？；.!?;、，,\s]+$/.test(s));
+    .map((s) => {
+      // Restore ellipsis placeholders
+      let restored = s;
+      for (let i = 0; i < ellipsisMap.length; i++) {
+        restored = restored.replace(`\x00E${i}\x00`, ellipsisMap[i]);
+      }
+      return restored.trim();
+    })
+    .filter((s) => s && !/^[。！？；.!?;~、，,\s]+$/.test(s));
 }

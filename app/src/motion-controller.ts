@@ -1,8 +1,8 @@
 /**
  * MotionController — unified animation system supporting VRMA, VMD, and FBX.
  *
- * Following lobe-vidol pattern: create a NEW AnimationMixer for each animation
- * playback and properly clean up (uncacheRoot) when stopping.
+ * Uses a single persistent AnimationMixer with crossFade transitions to avoid
+ * T-pose flickering between animations.
  */
 
 import * as THREE from 'three'
@@ -119,6 +119,7 @@ export class MotionController {
 
   constructor(vrm: VRM) {
     this.vrm = vrm
+    this.mixer = new THREE.AnimationMixer(vrm.scene)
     this.gltfLoader = new GLTFLoader()
     this.gltfLoader.register((parser) => new VRMAnimationLoaderPlugin(parser))
     this.ikHandler = VRMIKHandler.get(vrm)
@@ -140,24 +141,15 @@ export class MotionController {
     if (this._ikActive) this.ikHandler.update()
   }
 
-  // ── Mixer lifecycle (lobe-vidol pattern) ─────────────────────────────────
+  // ── CrossFade helper ─────────────────────────────────────────────────────
 
-  /** Create a fresh mixer, destroying any existing one first. */
-  private createMixer(): THREE.AnimationMixer {
-    this.destroyMixer()
-    this.mixer = new THREE.AnimationMixer(this.vrm.scene)
-    return this.mixer
-  }
-
-  /** Clean up current mixer: stop all actions, uncache, nullify. */
-  private destroyMixer() {
-    if (this.mixer) {
-      this.mixer.stopAllAction()
-      this.mixer.uncacheRoot(this.vrm.scene)
-      this.mixer = null
+  private crossFadeTo(newAction: THREE.AnimationAction, duration = 0.3) {
+    newAction.reset().setEffectiveWeight(1).play()
+    const prev = this.currentAction ?? this.idleAction
+    if (prev && prev !== newAction) {
+      prev.crossFadeTo(newAction, duration, false)
     }
-    this.idleAction = null
-    this.currentAction = null
+    this.currentAction = newAction
   }
 
   // ── Load & play idle animation ───────────────────────────────────────────
@@ -170,12 +162,11 @@ export class MotionController {
     this.startIdle()
   }
 
-  /** (Re)start idle on a fresh mixer. */
+  /** (Re)start idle via crossFade. */
   private startIdle() {
     if (!this.idleClip) return
-    const mixer = this.createMixer()
-    this.idleAction = mixer.clipAction(this.idleClip)
-    this.idleAction.play()
+    this.idleAction = this.mixer.clipAction(this.idleClip)
+    this.crossFadeTo(this.idleAction)
   }
 
   // ── Clear current action (private) ──────────────────────────────────────
@@ -198,8 +189,9 @@ export class MotionController {
     this._actionPlaying = false
     this._actionGeneration++ // invalidate any in-flight playAction
 
-    // Fresh mixer + idle
-    this.startIdle()
+    // CrossFade back to idle
+    this.idleAction = this.mixer.clipAction(this.idleClip)
+    this.crossFadeTo(this.idleAction)
 
     if (wasDancing) this.onDanceStop?.()
   }
@@ -230,22 +222,16 @@ export class MotionController {
 
     this.clearTimers()
 
-    // Create fresh mixer for this action
-    const mixer = this.createMixer()
-
-    const action = mixer.clipAction(clip)
-    action.reset()
+    const action = this.mixer.clipAction(clip)
     action.setLoop(THREE.LoopOnce, 1)
-    action.clampWhenFinished = hold
-    action.play()
-
-    this.currentAction = action
+    action.clampWhenFinished = true  // always clamp to avoid T-pose on finish
+    this.crossFadeTo(action)
 
     let settled = false
     const settle = () => {
       if (settled) return
       settled = true
-      mixer.removeEventListener('finished', onFinished)
+      this.mixer.removeEventListener('finished', onFinished)
       // Stale settle: another action or resetToIdle already took over
       if (gen !== this._actionGeneration) return
       this.clearTimers()
@@ -263,7 +249,7 @@ export class MotionController {
       }
     }
     const onFinished = () => settle()
-    mixer.addEventListener('finished', onFinished)
+    this.mixer.addEventListener('finished', onFinished)
 
     // Safety timeout: guarantee _actionPlaying resets even if 'finished' never fires
     const duration = clip.duration > 0 ? clip.duration : 3
@@ -292,9 +278,6 @@ export class MotionController {
       this.clearTimers()
       this._actionPlaying = false
 
-      // Fresh mixer for dance
-      const mixer = this.createMixer()
-
       this.onDanceStart?.()
 
       // Play BGM if preset has one
@@ -306,10 +289,9 @@ export class MotionController {
         this.bgmAudio.play().catch(() => {})
       }
 
-      this.currentAction = mixer.clipAction(clip)
-      this.currentAction.reset()
-      this.currentAction.setLoop(THREE.LoopRepeat, Infinity)
-      this.currentAction.play()
+      const danceAction = this.mixer.clipAction(clip)
+      danceAction.setLoop(THREE.LoopRepeat, Infinity)
+      this.crossFadeTo(danceAction)
     } catch (err) {
       console.error('Failed to start dance:', err)
       this._isDancing = false
@@ -345,7 +327,13 @@ export class MotionController {
     this._isDancing = false
     this._actionPlaying = false
     this._actionGeneration++
-    this.destroyMixer()
+    if (this.mixer) {
+      this.mixer.stopAllAction()
+      this.mixer.uncacheRoot(this.vrm.scene)
+      this.mixer = null
+    }
+    this.idleAction = null
+    this.currentAction = null
   }
 
   // ── Internal ────────────────────────────────────────────────────────────

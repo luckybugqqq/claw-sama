@@ -9,9 +9,10 @@ interface VrmMessage {
   duration?: number
   audioUrl?: string
   audioIndex?: number
-  audioTotal?: number
-  streaming?: boolean
   imageUrl?: string
+  sendFirstTts?: boolean
+  appendText?: boolean
+  replyDone?: boolean
 }
 
 export type OnVrmMessage = (msg: VrmMessage) => void
@@ -54,23 +55,32 @@ export function TextBubble({ onMessage, enabled = true, ttsEnabled = true }: { o
 
   // Split text into grapheme clusters
   const chars = useRef<string[]>([])
-
-  // Track previously revealed count for incremental streaming
-  const prevRevealedRef = useRef<number>(0)
+  // Current full text (for appending subsequent sentences)
+  const fullTextRef = useRef('')
+  // Current char rate (for restarting typewriter on appendText)
+  const charRateRef = useRef(100)
+  // Current charCount as a ref (for restarting typewriter from correct position)
+  const charCountRef = useRef(0)
+  // Pending text to reveal when a given audio index starts playing
+  const pendingTextForAudioRef = useRef<Map<number, string>>(new Map())
 
   // Audio queue for sequential playback — keyed by index for ordering
   const audioQueueRef = useRef<Map<number, string>>(new Map())
   const audioPlayingRef = useRef<boolean>(false)
   const audioNextIndexRef = useRef<number>(0)
-  const audioTotalRef = useRef<number>(0)
   const audioReceivedRef = useRef<number>(0)
 
-  // === Hide lifecycle tracking ===
-  // The bubble hides only when ALL three conditions are met:
-  //   1. streamingDone: received a non-streaming (final) text message
-  //   2. typewriter finished: typewriterRef.current === null
-  //   3. audio finished: no audio playing and queue empty
-  const streamingDoneRef = useRef(false)
+  // === sendFirstTts queue ===
+  // When a new sendFirstTts arrives while a previous one is still playing,
+  // queue it instead of interrupting. Processed when the current reply finishes.
+  const pendingSendFirstTtsRef = useRef<VrmMessage[]>([])
+  // appendText messages buffered while sendFirstTts is queued
+  const pendingAppendRef = useRef<VrmMessage[]>([])
+  // replyDone: all sentences dispatched for current reply — required before hide is scheduled
+  // Default true so non-sendFirstTts messages (plain text, images) can still schedule hide.
+  const replyDoneRef = useRef(true)
+  // replyDone arrived while sendFirstTts was still queued — apply after draining queue
+  const pendingReplyDoneRef = useRef(false)
 
   // Auto-scroll to bottom on char reveal
   useEffect(() => {
@@ -85,21 +95,45 @@ export function TextBubble({ onMessage, enabled = true, ttsEnabled = true }: { o
     setCharCount(0)
     setImageUrl(null)
     setThinking(false)
-    prevRevealedRef.current = 0
+    chars.current = []
+    fullTextRef.current = ''
+    charCountRef.current = 0
+    pendingTextForAudioRef.current.clear()
+    pendingAppendRef.current = []
+    replyDoneRef.current = true
+    pendingReplyDoneRef.current = false
     if (typewriterRef.current) { clearInterval(typewriterRef.current); typewriterRef.current = null }
     if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null }
   }, [])
 
-  // Central function: check if all conditions are met to schedule hide
+  // Ref to handleMessage — used by tryScheduleHide to drain the pending queue
+  const handleMessageRef = useRef<(msg: VrmMessage) => void>(() => {})
+
+  // Central function: check if all conditions are met to schedule hide (or drain queue)
   const tryScheduleHide = useCallback(() => {
     // Don't schedule if already scheduled
     if (timerRef.current) return
 
     const typewriterDone = typewriterRef.current === null
     const audioDone = !audioPlayingRef.current && audioQueueRef.current.size === 0
-    const streamingDone = streamingDoneRef.current
 
-    if (streamingDone && typewriterDone && audioDone) {
+    if (typewriterDone && audioDone) {
+      // Check pending sendFirstTts queue before hiding
+      if (pendingSendFirstTtsRef.current.length > 0) {
+        const next = pendingSendFirstTtsRef.current.shift()!
+        console.log(`[claw-sama] draining pending sendFirstTts queue (${pendingSendFirstTtsRef.current.length} remaining)`)
+        handleMessageRef.current(next)
+        // Process any buffered appendText messages for this reply
+        const appends = pendingAppendRef.current.splice(0)
+        for (const a of appends) handleMessageRef.current(a)
+        // Apply replyDone that arrived while this reply was queued
+        if (pendingReplyDoneRef.current) {
+          pendingReplyDoneRef.current = false
+          replyDoneRef.current = true
+        }
+        return
+      }
+      if (!replyDoneRef.current) return
       timerRef.current = setTimeout(hideBubble, HIDE_DELAY_MS)
     }
   }, [hideBubble])
@@ -111,8 +145,8 @@ export function TextBubble({ onMessage, enabled = true, ttsEnabled = true }: { o
     audioQueueRef.current.clear()
     audioPlayingRef.current = false
     audioNextIndexRef.current = 0
-    audioTotalRef.current = 0
     audioReceivedRef.current = 0
+    pendingTextForAudioRef.current.clear()
     if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null }
   }, [])
 
@@ -134,6 +168,34 @@ export function TextBubble({ onMessage, enabled = true, ttsEnabled = true }: { o
     audioQueueRef.current.delete(nextIdx)
     audioNextIndexRef.current = nextIdx + 1
     audioPlayingRef.current = true
+
+    // Reveal text for this sentence if it arrived via appendText
+    const pendingText = pendingTextForAudioRef.current.get(nextIdx)
+    if (pendingText !== undefined) {
+      pendingTextForAudioRef.current.delete(nextIdx)
+      const newGraphemes = [...segmenter.segment(pendingText)].map((s) => s.segment)
+      chars.current = [...chars.current, ...newGraphemes]
+      fullTextRef.current = fullTextRef.current + pendingText
+      setText(fullTextRef.current)
+      if (!typewriterRef.current) {
+        // Restart typewriter from current position
+        let idx = charCountRef.current
+        typewriterRef.current = setInterval(() => {
+          idx++
+          if (idx >= chars.current.length) {
+            setCharCount(chars.current.length)
+            charCountRef.current = chars.current.length
+            clearInterval(typewriterRef.current!); typewriterRef.current = null
+            tryScheduleHide()
+          } else {
+            setCharCount(idx)
+            charCountRef.current = idx
+          }
+        }, charRateRef.current)
+      }
+      // else: typewriter is running and will pick up new chars via chars.current.length
+    }
+
     const lipSync = LipSync.getInstance()
     const onDone = () => {
       audioPlayingRef.current = false
@@ -165,15 +227,33 @@ export function TextBubble({ onMessage, enabled = true, ttsEnabled = true }: { o
 
   // Stable handleMessage — never causes SSE reconnect
   const handleMessage = useCallback((msg: VrmMessage) => {
-    // Audio-only message (from TTS queue broadcast)
-    if (!msg.text && msg.audioUrl) {
-      if (msg.audioTotal) audioTotalRef.current = msg.audioTotal
+    // Audio-only message (legacy path, kept for compatibility)
+    if (!msg.text && msg.audioUrl && !msg.appendText) {
       audioReceivedRef.current++
-      // Cancel any pending hide — more content arrived
       if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null }
       const idx = msg.audioIndex ?? audioReceivedRef.current - 1
       audioQueueRef.current.set(idx, msg.audioUrl)
       playNextAudioRef.current()
+      return
+    }
+
+    // appendText: subsequent sentence with matching audio — queue both together
+    if (msg.appendText && msg.text) {
+      // If sendFirstTts is queued (previous reply still playing), buffer this too
+      if (pendingSendFirstTtsRef.current.length > 0 || audioPlayingRef.current) {
+        if (pendingSendFirstTtsRef.current.length > 0) {
+          pendingAppendRef.current.push(msg)
+          return
+        }
+      }
+      if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null }
+      const idx = msg.audioIndex ?? 0
+      // Store text to reveal when this audio index starts playing
+      pendingTextForAudioRef.current.set(idx, msg.text)
+      if (msg.audioUrl) {
+        audioQueueRef.current.set(idx, msg.audioUrl)
+        playNextAudioRef.current()
+      }
       return
     }
 
@@ -182,10 +262,8 @@ export function TextBubble({ onMessage, enabled = true, ttsEnabled = true }: { o
       setText('')
       setCharCount(0)
       if (typewriterRef.current) { clearInterval(typewriterRef.current); typewriterRef.current = null }
-      prevRevealedRef.current = 0
       setImageUrl(msg.imageUrl)
       setVisible(true)
-      streamingDoneRef.current = true
       if (timerRef.current) clearTimeout(timerRef.current)
       timerRef.current = setTimeout(() => hideBubbleRef.current(), 15_000)
       return
@@ -203,104 +281,96 @@ export function TextBubble({ onMessage, enabled = true, ttsEnabled = true }: { o
       return
     }
 
-    // --- Text message (streaming or final) ---
+    // --- Text message ---
 
     // Cancel pending hide — new text arrived
     if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null }
     if (typewriterRef.current) { clearInterval(typewriterRef.current); typewriterRef.current = null }
 
-    const isStreaming = msg.streaming === true
-
-    // On first text message of a new reply, reset audio tracking
-    if (!isStreaming || prevRevealedRef.current === 0) {
-      audioTotalRef.current = 0
+    // sendFirstTts: queue if something is currently playing, otherwise reset and play
+    if (msg.sendFirstTts) {
+      const busy = audioPlayingRef.current || typewriterRef.current !== null
+      if (busy) {
+        console.log(`[claw-sama] sendFirstTts queued — previous reply still playing (queue size: ${pendingSendFirstTtsRef.current.length + 1})`)
+        pendingSendFirstTtsRef.current.push(msg)
+        return
+      }
+      console.log('[claw-sama] sendFirstTts received — resetting TTS state')
+      replyDoneRef.current = false
+      const lipSync = LipSync.getInstance()
+      lipSync.stopAudio()
+      // Preserve early-arriving audio and text for this new reply (index >= 1)
+      const earlyAudio = new Map<number, string>()
+      for (const [idx, url] of audioQueueRef.current) {
+        if (idx >= 1) earlyAudio.set(idx, url)
+      }
+      const earlyText = new Map<number, string>()
+      for (const [idx, t] of pendingTextForAudioRef.current) {
+        if (idx >= 1) earlyText.set(idx, t)
+      }
+      audioQueueRef.current.clear()
+      pendingTextForAudioRef.current.clear()
+      if (msg.audioUrl) audioQueueRef.current.set(0, msg.audioUrl)
+      for (const [idx, url] of earlyAudio) audioQueueRef.current.set(idx, url)
+      for (const [idx, t] of earlyText) pendingTextForAudioRef.current.set(idx, t)
+      audioPlayingRef.current = false
+      audioNextIndexRef.current = 0
+      audioReceivedRef.current = 0
+    } else {
       audioReceivedRef.current = 0
       audioNextIndexRef.current = 0
     }
 
-    // Track streaming state
-    streamingDoneRef.current = !isStreaming
-
-    const fullText = msg.text
+    const fullText = msg.text!
     const graphemes = [...segmenter.segment(fullText)].map((s) => s.segment)
     chars.current = graphemes
+    fullTextRef.current = fullText
+    charCountRef.current = 0
 
     setText(fullText)
     setThinking(false)
     setVisible(true)
-
-    // Incremental streaming: keep previously revealed chars visible
-    const previouslyRevealed = prevRevealedRef.current
-    const startFrom = isStreaming && previouslyRevealed <= graphemes.length
-      ? Math.min(previouslyRevealed, graphemes.length)
-      : 0
-    setCharCount(startFrom)
+    setCharCount(0)
 
     const baseRate = getCharRate(fullText, ttsEnabledRef.current)
+    charRateRef.current = baseRate
 
-    const startTypewriter = (audioDurationMs?: number) => {
-      const remainingChars = graphemes.length - startFrom
-      if (remainingChars <= 0) {
-        prevRevealedRef.current = graphemes.length
-        setCharCount(graphemes.length)
-        // typewriterRef stays null — typewriter is "done"
-        tryScheduleHideRef.current()
-        return
-      }
-
-      const charInterval = audioDurationMs
-        ? Math.max(20, (audioDurationMs * 0.8) / remainingChars)
-        : baseRate
-
-      const emotionDuration = audioDurationMs
-        ? Math.max(audioDurationMs + HIDE_DELAY_MS, remainingChars * charInterval + 5000)
-        : remainingChars * charInterval + 5000
+    if (graphemes.length === 0) {
+      tryScheduleHideRef.current()
+    } else {
+      const emotionDuration = graphemes.length * baseRate + 5000
       setTimeout(() => onMessageRef.current?.({ ...msg, emotionDuration }), 1000)
 
-      let idx = startFrom
+      let idx = 0
       typewriterRef.current = setInterval(() => {
         idx++
-        if (idx >= graphemes.length) {
-          setCharCount(graphemes.length)
-          prevRevealedRef.current = graphemes.length
+        if (idx >= chars.current.length) {
+          setCharCount(chars.current.length)
+          charCountRef.current = chars.current.length
           if (typewriterRef.current) { clearInterval(typewriterRef.current); typewriterRef.current = null }
-          // Typewriter done — check if we can hide
           tryScheduleHideRef.current()
         } else {
           setCharCount(idx)
-          prevRevealedRef.current = idx
+          charCountRef.current = idx
         }
-      }, charInterval)
+      }, baseRate)
     }
 
-    if (ttsEnabledRef.current && msg.audioUrl) {
-      // First text+audio message: play directly and start typewriter synced to audio
-      audioQueueRef.current.clear()
-      audioPlayingRef.current = false
-      const lipSync = LipSync.getInstance()
-      lipSync.playAudio(msg.audioUrl).then((audioDurationMs) => {
-        startTypewriter(audioDurationMs)
-      }).catch((err) => {
-        console.error('Audio play failed:', err)
-        startTypewriter()
-      })
-      // Fallback: if audio takes too long to load, start typewriter anyway
-      setTimeout(() => {
-        if (!typewriterRef.current && prevRevealedRef.current < graphemes.length) {
-          startTypewriter()
-        }
-      }, 3000)
-    } else {
-      startTypewriter()
+    // All audio goes through the queue via playNextAudio.
+    if (msg.sendFirstTts && ttsEnabledRef.current) {
+      playNextAudioRef.current()
     }
   }, []) // stable — no deps, uses refs for everything
+
+  // Keep handleMessageRef in sync so tryScheduleHide can drain the queue
+  handleMessageRef.current = handleMessage
 
   useEffect(() => {
     const es = new EventSource('http://127.0.0.1:18789/plugins/claw-sama/events')
     es.onmessage = (e) => {
       try {
         const data = JSON.parse(e.data)
-        console.log('[claw-sama] SSE message:', data.imageUrl ? `imageUrl=${data.imageUrl}` : '', data.text ? `text=${data.text.slice(0, 50)}...` : '', data.clearText ? 'clearText' : '')
+        console.log('[claw-sama] SSE message:', data.imageUrl ? `imageUrl=${data.imageUrl}` : '', data.text ? `text=${data.text.slice(0, 50)}...` : '', data.clearText ? 'clearText' : '', data.sendFirstTts ? 'sendFirstTts' : '', data.appendText ? `appendText idx=${data.audioIndex}` : '', data.replyDone ? 'replyDone' : '', data.audioUrl ? `audio=${data.audioIndex}` : '')
         if (data.clearText) {
           if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null }
           if (typewriterRef.current) { clearInterval(typewriterRef.current); typewriterRef.current = null }
@@ -309,13 +379,25 @@ export function TextBubble({ onMessage, enabled = true, ttsEnabled = true }: { o
           setThinking(false)
           setVisible(false)
           setImageUrl(null)
-          prevRevealedRef.current = 0
-          streamingDoneRef.current = false
           audioQueueRef.current.clear()
           audioPlayingRef.current = false
           audioNextIndexRef.current = 0
-          audioTotalRef.current = 0
           audioReceivedRef.current = 0
+          pendingTextForAudioRef.current.clear()
+          pendingSendFirstTtsRef.current = []
+          pendingAppendRef.current = []
+          replyDoneRef.current = true
+          pendingReplyDoneRef.current = false
+          return
+        }
+        if (data.replyDone) {
+          if (pendingSendFirstTtsRef.current.length > 0) {
+            // sendFirstTts for this reply is still queued — buffer replyDone until queue drains
+            pendingReplyDoneRef.current = true
+          } else {
+            replyDoneRef.current = true
+            tryScheduleHideRef.current()
+          }
           return
         }
         const msg: VrmMessage = data

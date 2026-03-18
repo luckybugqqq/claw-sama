@@ -55,14 +55,28 @@ Claw Sama 是一个基于 [OpenClaw](https://github.com/anthropics/openclaw) 插
 - Voice call mode with redesigned UI — smooth, immersive voice conversations
 - LLM-powered personality — she has her own character, not just a chatbot
 - Configurable persona via SOUL.md & IDENTITY.md — define her personality, speech style, backstory
-- One-click persona generation — take a screenshot of the VRM model, AI creates a matching character profile
+- One-click persona generation — take a screenshot of the VRM model, AI creates a matching bilingual character profile
+- Session memo — key events (touch, dance, conversations) are silently logged to the OpenClaw session JSONL for context
 - Edge TTS (free, Chinese/English/Japanese) or Qwen TTS (20+ expressive voices)
+- Full UI i18n — switch between Chinese and English in settings; persona generation prompt adapts to the selected language
 - 文字或语音聊天（按住 F10 说话），她会用语音回复——不只是文字
 - 语音通话模式，全新 UI 设计——流畅沉浸的语音对话体验
 - LLM 驱动的独立人格——不只是聊天机器人，她有自己的性格
 - 通过 SOUL.md 和 IDENTITY.md 自定义人设——定义性格、说话风格、背景故事
-- 一键生成人设——截取模型截图，AI 自动生成匹配的角色设定
+- 一键生成人设——截取模型截图，AI 自动生成双语匹配角色设定
+- 会话备忘录——触摸、舞蹈等关键事件静默写入 OpenClaw 会话 JSONL，保持上下文连贯
 - Edge TTS（免费，中/英/日语音）或通义千问 TTS（20+ 种表现力丰富的语音）
+- 全 UI 国际化——在设置中切换中文/英文，人设生成提示词自动适配语言
+
+### 💗 Mood System / 情绪系统
+- Live mood indicator — a canvas-based liquid heart + bar shows her current emotional state in real time
+- 5-tier color system: pink (euphoric) → orange (happy) → green (calm) → blue (neutral) → grey (low)
+- Mood shifts from conversation, touch reactions, and dancing — floats up/down with ❤️ delta bubbles
+- Mood influences her personality and system prompt dynamically
+- 实时情绪指示器——液态心形 + 液柱以动画方式呈现当前情绪状态
+- 五级色彩系统：粉红（开心）→ 橙（愉快）→ 绿（平静）→ 蓝（正常）→ 灰（低落）
+- 情绪受对话、触摸和舞蹈影响动态变化，并以 ❤️ 气泡飘动显示增减值
+- 情绪实时影响她的人设和系统提示词
 
 ### 👀 Companion Interaction / 陪伴式交互
 - She watches your screen and understands what you're doing — then talks to you about it
@@ -70,11 +84,15 @@ Claw Sama 是一个基于 [OpenClaw](https://github.com/anthropics/openclaw) 插
 - **Debugging a React component?** She notices you've been stuck for a while and suggests taking a break
 - **Watching a movie on Bilibili?** She comments on the plot twist she just saw
 - **Reading documentation?** She quietly cheers you on: "You got this!"
+- Touch her to interact — she reacts with animations and may reply; cooldown system prevents spam
+- Dance invitations are logged to the session memo automatically
 - 通过屏幕观察感知你正在做的事，像真正的伙伴一样自然地融入你的日常
 - **在打杀戮尖塔？** 她会帮你分析卡组搭配，提醒你小心精英怪
 - **调试 React 组件？** 她发现你卡了好一会儿，建议你起来活动活动
 - **在 B 站看电影？** 她会吐槽刚才的剧情反转
 - **在看技术文档？** 她默默给你打气："加油，你可以的！"
+- 触摸她可以触发反应——她会播放动画并可能回应；内置冷却防止刷屏
+- 邀请跳舞会自动记录到会话备忘录
 
 ### 💃 Dance System / 舞蹈系统
 - VMD dance playback with BGM — pick a preset and watch her dance
@@ -125,10 +143,10 @@ Open settings via the gear icon on the avatar window: / 点击角色窗口上的
 
 | Tab / 标签 | Options / 选项 |
 |---|---|
-| General / 常规 | Hide UI, subtitles, TTS, volume, gaze tracking, UI position, screen observation / 隐藏UI、字幕、语音、音量、视线跟踪、UI位置、屏幕观察 |
+| General / 常规 | Hide UI, subtitles, TTS, volume, gaze tracking, UI position, screen observation, hide mood bar, language / 隐藏UI、字幕、语音、音量、视线跟踪、UI位置、屏幕观察、隐藏情绪条、语言 |
 | Voice / 语音 | TTS provider (Edge/Qwen), voice selection with preview / TTS 服务商、语音选择与试听 |
 | Model / 形象 | Built-in VRM models, import custom .vrm / 内置VRM模型、导入自定义模型 |
-| Persona / 人设 | Edit IDENTITY.md & SOUL.md, one-click AI generation / 编辑人设文件、一键AI生成 |
+| Persona / 人设 | Edit IDENTITY.md & SOUL.md, one-click AI generation (bilingual) / 编辑人设文件、一键AI生成（双语）|
 | Dance / 舞蹈 | Dance presets with BGM, VMD playback / 舞蹈预设与BGM、VMD播放 |
 
 ## Architecture / 架构

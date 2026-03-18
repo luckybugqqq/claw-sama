@@ -23,12 +23,13 @@ export type VrmBroadcastPayload = {
   emotionIntensity?: number;
   audioUrl?: string;
   audioIndex?: number;
-  audioTotal?: number;
-  streaming?: boolean;
   clearText?: boolean;
   imageUrl?: string;
   moodDelta?: number;   // mood change amount (±1 to ±3)
   moodIndex?: number;   // new mood value (0–100) after change
+  sendFirstTts?: boolean; // first sentence: text + optional audio, resets bubble
+  appendText?: boolean;   // subsequent sentence: text + optional audio, appended to bubble
+  replyDone?: boolean;    // all sentences dispatched for this reply — frontend may now schedule hide
 };
 
 export function broadcastToVrm(payload: VrmBroadcastPayload) {
