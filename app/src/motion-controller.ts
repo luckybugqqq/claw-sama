@@ -164,7 +164,7 @@ export class MotionController {
 
   /** (Re)start idle via crossFade. */
   private startIdle() {
-    if (!this.idleClip) return
+    if (!this.idleClip || !this.mixer) return
     this.idleAction = this.mixer.clipAction(this.idleClip)
     this.crossFadeTo(this.idleAction)
   }
@@ -190,8 +190,10 @@ export class MotionController {
     this._actionGeneration++ // invalidate any in-flight playAction
 
     // CrossFade back to idle
-    this.idleAction = this.mixer.clipAction(this.idleClip)
-    this.crossFadeTo(this.idleAction)
+    if (this.mixer && this.idleClip) {
+      this.idleAction = this.mixer.clipAction(this.idleClip)
+      this.crossFadeTo(this.idleAction)
+    }
 
     if (wasDancing) this.onDanceStop?.()
   }
@@ -218,6 +220,7 @@ export class MotionController {
     // Check if state was reset or another action started during await
     if (gen !== this._actionGeneration) return
     if (!clip) { console.warn('[Motion] clip load failed for:', name); this._actionPlaying = false; return }
+    if (!this.mixer) { this._actionPlaying = false; return }
     console.log('[Motion] playing:', name)
 
     this.clearTimers()
@@ -231,7 +234,7 @@ export class MotionController {
     const settle = () => {
       if (settled) return
       settled = true
-      this.mixer.removeEventListener('finished', onFinished)
+      this.mixer?.removeEventListener('finished', onFinished)
       // Stale settle: another action or resetToIdle already took over
       if (gen !== this._actionGeneration) return
       this.clearTimers()
@@ -249,7 +252,7 @@ export class MotionController {
       }
     }
     const onFinished = () => settle()
-    this.mixer.addEventListener('finished', onFinished)
+    this.mixer?.addEventListener('finished', onFinished)
 
     // Safety timeout: guarantee _actionPlaying resets even if 'finished' never fires
     const duration = clip.duration > 0 ? clip.duration : 3
@@ -289,6 +292,7 @@ export class MotionController {
         this.bgmAudio.play().catch(() => {})
       }
 
+      if (!this.mixer) { this._isDancing = false; return }
       const danceAction = this.mixer.clipAction(clip)
       danceAction.setLoop(THREE.LoopRepeat, Infinity)
       this.crossFadeTo(danceAction)
